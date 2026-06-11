@@ -89,80 +89,88 @@ fun MainScreen(
     }
 
     MindDumpTheme(darkTheme = uiState.isDarkTheme) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = when (uiState.currentSpace) {
-                                Space.PUBLIC -> "MindDump · Public"
-                                Space.PRIVATE -> "MindDump · Private"
-                            }
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            // Main content
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = when (uiState.currentSpace) {
+                                    Space.PUBLIC -> "MindDump · Public"
+                                    Space.PRIVATE -> "MindDump · Private"
+                                }
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface
                         )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface
                     )
-                )
-            },
-            bottomBar = {
-                InputBar(
-                    inputText = uiState.inputText,
-                    isRecording = uiState.isRecording,
-                    onInputChange = { viewModel.updateInputText(it) },
-                    onSubmit = { viewModel.submitText() },
-                    onRecordClick = {
-                        if (uiState.isRecording) {
-                            audioRecorder.stop()
-                            viewModel.stopRecording()
-                        } else {
-                            audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                },
+                bottomBar = {
+                    InputBar(
+                        inputText = uiState.inputText,
+                        isRecording = uiState.isRecording,
+                        onInputChange = { viewModel.updateInputText(it) },
+                        onSubmit = { viewModel.submitText() },
+                        onRecordClick = {
+                            if (uiState.isRecording) {
+                                audioRecorder.stop()
+                                viewModel.stopRecording()
+                            } else {
+                                audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        onCameraClick = {
+                            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                        },
+                        onImportClick = {
+                            fileImportLauncher.launch(arrayOf("*/*"))
                         }
-                    },
-                    onCameraClick = {
-                        cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
-                    },
-                    onImportClick = {
-                        fileImportLauncher.launch(arrayOf("*/*"))
-                    }
-                )
-            }
-        ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
-                // Entry list
-                EntryList(
-                    entries = uiState.entries,
-                    onEntryClick = { entry ->
-                        openFile(context, entry.file)
-                    },
-                    onEntryLongClick = { entry ->
-                        entryToDelete = entry
-                    },
+                    )
+                }
+            ) { paddingValues ->
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = 72.dp) // space for FAB
-                )
+                        .padding(paddingValues)
+                ) {
+                    // Entry list
+                    EntryList(
+                        entries = uiState.entries,
+                        onEntryClick = { entry ->
+                            openFile(context, entry.file)
+                        },
+                        onEntryLongClick = { entry ->
+                            entryToDelete = entry
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = 72.dp) // space for FAB
+                    )
 
-                // Space switch FAB - bottom right, above input bar
-                SpaceSwitchButton(
-                    currentSpace = uiState.currentSpace,
-                    onClick = { viewModel.toggleSpace() },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 80.dp)
-                )
+                    // Space switch FAB - bottom right, above input bar
+                    SpaceSwitchButton(
+                        currentSpace = uiState.currentSpace,
+                        onClick = { viewModel.toggleSpace() },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 80.dp)
+                    )
+                }
             }
 
-            // Camera overlay
+            // Camera overlay - FULL SCREEN on top of everything
             if (uiState.isCameraOpen) {
+                // Ensure output files and directories exist
+                val photoFile = viewModel.getPhotoFile()
+                val videoFile = viewModel.getVideoFile()
+                photoFile.parentFile?.mkdirs()
+                videoFile.parentFile?.mkdirs()
                 cameraManager.setOutputFiles(
-                    photo = viewModel.getPhotoFile(),
-                    video = viewModel.getVideoFile()
+                    photo = photoFile,
+                    video = videoFile
                 )
                 CameraScreen(
                     cameraManager = cameraManager,

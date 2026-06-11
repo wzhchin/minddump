@@ -6,11 +6,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,7 +81,7 @@ fun EntryItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = if (entry.type == EntryType.TEXT) Alignment.Top else Alignment.CenterVertically
         ) {
             // Type icon
             Icon(
@@ -101,12 +102,29 @@ fun EntryItem(
 
             // Content
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = entry.file.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                if (entry.type == EntryType.TEXT) {
+                    // Show actual text content for text entries
+                    val textContent = remember(entry.file) {
+                        try {
+                            entry.file.readText().take(500)
+                        } catch (_: Exception) {
+                            entry.file.name
+                        }
+                    }
+                    Text(
+                        text = textContent,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 5,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Text(
+                        text = entry.file.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Text(
                     text = formatEntryMeta(entry),
                     style = MaterialTheme.typography.bodySmall,
