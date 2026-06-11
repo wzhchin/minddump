@@ -36,7 +36,7 @@ fun EntryList(
         ) {
             Text(
                 text = "还没有任何记录\n点击下方输入框开始录入",
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
         }
@@ -66,79 +66,126 @@ fun EntryItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            ),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Row(
+    // Use filled card for text entries (tonal elevation), outlined for others
+    if (entry.type == EntryType.TEXT) {
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = if (entry.type == EntryType.TEXT) Alignment.Top else Alignment.CenterVertically
-        ) {
-            // Type icon
-            Icon(
-                imageVector = when (entry.type) {
-                    EntryType.TEXT -> Icons.AutoMirrored.Filled.Notes
-                    EntryType.RECORDING -> Icons.Filled.Mic
-                    EntryType.PHOTO -> Icons.Filled.PhotoCamera
-                    EntryType.VIDEO -> Icons.Filled.Videocam
-                    EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
-                    EntryType.UNKNOWN -> Icons.Filled.Description
-                },
-                contentDescription = entry.type.name,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                ),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 0.dp
             )
+        ) {
+            TextEntryContent(entry)
+        }
+    } else {
+        ElevatedCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 1.dp
+            )
+        ) {
+            OtherEntryContent(entry)
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.width(12.dp))
+@Composable
+private fun TextEntryContent(entry: MindDumpEntry) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.Notes,
+            contentDescription = entry.type.name,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
 
-            // Content
-            Column(modifier = Modifier.weight(1f)) {
-                if (entry.type == EntryType.TEXT) {
-                    // Show actual text content for text entries
-                    val textContent = remember(entry.file) {
-                        try {
-                            entry.file.readText().take(500)
-                        } catch (_: Exception) {
-                            entry.file.name
-                        }
-                    }
-                    Text(
-                        text = textContent,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 5,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                } else {
-                    Text(
-                        text = entry.file.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            val textContent = remember(entry.file) {
+                try {
+                    entry.file.readText().take(500)
+                } catch (_: Exception) {
+                    entry.file.name
                 }
-                Text(
-                    text = formatEntryMeta(entry),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
-
-            // Date badge
             Text(
-                text = entry.dateFolder,
+                text = textContent,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 5,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = formatEntryMeta(entry),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun OtherEntryContent(entry: MindDumpEntry) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = when (entry.type) {
+                EntryType.RECORDING -> Icons.Filled.Mic
+                EntryType.PHOTO -> Icons.Filled.PhotoCamera
+                EntryType.VIDEO -> Icons.Filled.Videocam
+                EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
+                EntryType.UNKNOWN -> Icons.Filled.Description
+                else -> Icons.Filled.Description
+            },
+            contentDescription = entry.type.name,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = entry.file.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = formatEntryMeta(entry),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Text(
+            text = entry.dateFolder,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

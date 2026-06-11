@@ -147,7 +147,7 @@ fun MainScreen(
                         },
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(bottom = 72.dp) // space for FAB
+                            .padding(bottom = 64.dp) // space for FAB
                     )
 
                     // Space switch FAB - bottom right, above input bar
@@ -156,7 +156,7 @@ fun MainScreen(
                         onClick = { viewModel.toggleSpace() },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 80.dp)
+                            .padding(end = 16.dp, bottom = 72.dp)
                     )
                 }
             }

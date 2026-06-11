@@ -29,13 +29,13 @@ fun InputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Record button
+            // Record button — 48dp minimum touch target
             IconButton(
                 onClick = onRecordClick,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = if (isRecording) Icons.Filled.StopCircle else Icons.Filled.Mic,
@@ -48,10 +48,10 @@ fun InputBar(
                 )
             }
 
-            // Camera button
+            // Camera button — 48dp minimum touch target
             IconButton(
                 onClick = onCameraClick,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.PhotoCamera,
@@ -60,10 +60,10 @@ fun InputBar(
                 )
             }
 
-            // Import file button
+            // Import file button — 48dp minimum touch target
             IconButton(
                 onClick = onImportClick,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.AttachFile,
@@ -86,7 +86,7 @@ fun InputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
                 .imePadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -111,7 +111,7 @@ fun InputBar(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = "发送",
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }

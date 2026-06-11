@@ -2,7 +2,6 @@ package com.chin.minddump.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
@@ -38,13 +37,11 @@ fun SpaceSwitchButton(
         label = "space_content_color"
     )
 
-    FilledIconButton(
+    LargeFloatingActionButton(
         onClick = onClick,
-        modifier = modifier.size(56.dp),
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = containerColor,
-            contentColor = contentColor
-        )
+        modifier = modifier,
+        containerColor = containerColor,
+        contentColor = contentColor
     ) {
         Icon(
             imageVector = when (currentSpace) {
