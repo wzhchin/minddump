@@ -1,0 +1,14 @@
+/server/target
+node_modules
+/web-dist
+/*.code-workspace
+/target
+/transient
+/server/transient
+tsconfig.tsbuildinfo
+__pycache__
+*.log
+.DS_Store
+*.swp
+app/build
+.gradle
