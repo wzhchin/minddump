@@ -1,0 +1,50 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Kotlin, Android SDK 35, Jetpack Compose, Material 3
+  Min SDK: 29 | Target SDK: 35
+  Package: com.chin.minddump
+  Build: Gradle (Kotlin DSL), KSP, Hilt, Room, Detekt, ktlint
+
+  Architecture:
+  - MVVM with single-activity Compose UI
+  - Hilt for DI, Room for local DB (with FTS5 full-text search)
+  - Repository pattern: MindDumpRepository wraps EntryDao
+  - CameraX for photo/video capture, MediaRecorder for audio
+  - AES-256-GCM encryption via CryptoEngine + EncryptedSharedPreferences
+  - Coil for async image loading (thumbnails)
+  - Navigation Compose for screen routing
+
+  Key modules:
+  - ui/ — screens (MainScreen, CameraScreen, FullscreenEditScreen), components/, theme
+  - data/ — Room entities (EntryEntity, EntryFts), EntryDao, MindDumpDatabase, MindDumpRepository
+  - security/ — CryptoEngine (AES-256-GCM), PasswordStore
+  - storage/ — FileStorageEngine, StoragePreferences
+  - audio/ — AudioRecorder
+  - camera/ — CameraManager
+  - di/ — Hilt modules (MediaModule, StorageModule)
+
+  Product: MindDump is a private, encrypted "brain dump" app. Users quickly capture
+  thoughts (text), photos, videos, and audio recordings. All entries are encrypted
+  at rest with AES-256. Optional biometric/password lock guards access.
+
+  Language: App UI is in Chinese (zh-CN). Code and comments in English.
+
+rules:
+  specs:
+    - Write specs in user-facing product behavior language
+    - Consider Android lifecycle (Activity/Fragment recreation, process death)
+    - Account for runtime permissions (camera, audio, storage)
+    - Specify behavior for biometric auth failure / fallback
+    - Encryption changes must maintain backward compatibility with existing encrypted data
+    - Consider migration paths when changing Room schema
+  tasks:
+    - Include migration strategy for Room schema changes
+    - Test on API 29+ (minSdk) when relevant
+    - Consider ProGuard/R8 rules for new reflection-based libraries
+    - Verify Detekt/ktlint compliance
+  design:
+    - Follow Now in Android (NiA) architecture patterns where applicable
+    - Use Compose state hoisting and unidirectional data flow
+    - Keep crypto operations off the main thread
+    - Document any new permissions required
