@@ -1,5 +1,6 @@
 package com.chin.minddump.ui
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.storage.EntryType
@@ -66,37 +72,48 @@ fun EntryItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    // Use filled card for text entries (tonal elevation), outlined for others
-    if (entry.type == EntryType.TEXT) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
+    when (entry.type) {
+        EntryType.TEXT -> {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    ),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 0.dp
-            )
-        ) {
-            TextEntryContent(entry)
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                TextEntryContent(entry)
+            }
         }
-    } else {
-        ElevatedCard(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
-                ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 1.dp
-            )
-        ) {
-            OtherEntryContent(entry)
+        EntryType.PHOTO -> {
+            ElevatedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                PhotoEntryContent(entry)
+            }
+        }
+        else -> {
+            ElevatedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                OtherEntryContent(entry)
+            }
         }
     }
 }
@@ -144,6 +161,65 @@ private fun TextEntryContent(entry: MindDumpEntry) {
 }
 
 @Composable
+private fun PhotoEntryContent(entry: MindDumpEntry) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Load and display image thumbnail
+        val bitmap = remember(entry.file) {
+            try {
+                // Decode with sampling for efficient thumbnail
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeFile(entry.file.absolutePath, options)
+
+                val targetWidth = 600
+                val sampleSize = maxOf(1, options.outWidth / targetWidth)
+
+                val decodeOptions = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                }
+                BitmapFactory.decodeFile(entry.file.absolutePath, decodeOptions)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "照片",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .clip(MaterialTheme.shapes.medium),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        // Meta info below image
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PhotoCamera,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = formatEntryMeta(entry),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 private fun OtherEntryContent(entry: MindDumpEntry) {
     Row(
         modifier = Modifier
@@ -154,7 +230,6 @@ private fun OtherEntryContent(entry: MindDumpEntry) {
         Icon(
             imageVector = when (entry.type) {
                 EntryType.RECORDING -> Icons.Filled.Mic
-                EntryType.PHOTO -> Icons.Filled.PhotoCamera
                 EntryType.VIDEO -> Icons.Filled.Videocam
                 EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
                 EntryType.UNKNOWN -> Icons.Filled.Description
