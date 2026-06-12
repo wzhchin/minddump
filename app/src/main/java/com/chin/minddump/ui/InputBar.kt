@@ -24,95 +24,101 @@ fun InputBar(
     onImportClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        // Action buttons row
-        Row(
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        tonalElevation = 2.dp,
+        shadowElevation = 8.dp
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .imePadding()
         ) {
-            // Record button — 48dp minimum touch target
-            IconButton(
-                onClick = onRecordClick,
-                modifier = Modifier.size(48.dp)
+            // Action buttons row — compact
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = if (isRecording) Icons.Filled.StopCircle else Icons.Filled.Mic,
-                    contentDescription = if (isRecording) "停止录音" else "录音",
-                    tint = if (isRecording) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    }
-                )
+                IconButton(
+                    onClick = onRecordClick,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isRecording) Icons.Filled.StopCircle else Icons.Filled.Mic,
+                        contentDescription = if (isRecording) "停止录音" else "录音",
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isRecording) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+
+                IconButton(
+                    onClick = onCameraClick,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PhotoCamera,
+                        contentDescription = "拍照/录像",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                IconButton(
+                    onClick = onImportClick,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AttachFile,
+                        contentDescription = "导入文件",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (isRecording) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "录音中...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
 
-            // Camera button — 48dp minimum touch target
-            IconButton(
-                onClick = onCameraClick,
-                modifier = Modifier.size(48.dp)
+            // Text input row — compact
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Filled.PhotoCamera,
-                    contentDescription = "拍照/录像",
-                    tint = MaterialTheme.colorScheme.primary
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = onInputChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("输入想法...") },
+                    maxLines = 4,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { onSubmit() }),
+                    shape = MaterialTheme.shapes.extraLarge
                 )
-            }
 
-            // Import file button — 48dp minimum touch target
-            IconButton(
-                onClick = onImportClick,
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.AttachFile,
-                    contentDescription = "导入文件",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
+                Spacer(modifier = Modifier.width(4.dp))
 
-            if (isRecording) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "录音中...",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-
-        // Text input row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .imePadding(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = inputText,
-                onValueChange = onInputChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("输入想法...") },
-                maxLines = 4,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSubmit() }),
-                shape = MaterialTheme.shapes.large
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            FilledIconButton(
-                onClick = onSubmit,
-                enabled = inputText.isNotBlank(),
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "发送",
-                    modifier = Modifier.size(24.dp)
-                )
+                FilledIconButton(
+                    onClick = onSubmit,
+                    enabled = inputText.isNotBlank(),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "发送",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }

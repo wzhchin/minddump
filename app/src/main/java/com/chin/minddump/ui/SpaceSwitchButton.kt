@@ -37,7 +37,7 @@ fun SpaceSwitchButton(
         label = "space_content_color"
     )
 
-    LargeFloatingActionButton(
+    SmallFloatingActionButton(
         onClick = onClick,
         modifier = modifier,
         containerColor = containerColor,
@@ -52,7 +52,7 @@ fun SpaceSwitchButton(
                 Space.PUBLIC -> "切换到 Private"
                 Space.PRIVATE -> "切换到 Public"
             },
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(18.dp)
         )
     }
 }
