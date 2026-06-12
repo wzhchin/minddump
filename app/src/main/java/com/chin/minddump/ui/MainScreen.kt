@@ -127,6 +127,9 @@ fun MainScreen(
                         },
                         onImportClick = {
                             fileImportLauncher.launch(arrayOf("*/*"))
+                        },
+                        onFullscreenClick = {
+                            viewModel.setFullscreenEdit(true)
                         }
                     )
                 }
@@ -180,6 +183,19 @@ fun MainScreen(
                         viewModel.onMediaCaptured()
                     },
                     modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // Fullscreen edit overlay
+            if (uiState.isFullscreenEdit) {
+                FullscreenEditScreen(
+                    text = uiState.inputText,
+                    onTextChange = { viewModel.updateInputText(it) },
+                    onClose = { viewModel.setFullscreenEdit(false) },
+                    onSubmit = {
+                        viewModel.submitText()
+                        viewModel.setFullscreenEdit(false)
+                    }
                 )
             }
         }

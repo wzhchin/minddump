@@ -25,6 +25,7 @@ data class MindDumpUiState(
     val inputText: String = "",
     val isRecording: Boolean = false,
     val isCameraOpen: Boolean = false,
+    val isFullscreenEdit: Boolean = false,
     val storagePermissionGranted: Boolean = false,
     val audioPermissionGranted: Boolean = false,
     val cameraPermissionGranted: Boolean = false,
@@ -129,5 +130,9 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
 
     fun setCameraOpen(open: Boolean) {
         _uiState.value = _uiState.value.copy(isCameraOpen = open)
+    }
+
+    fun setFullscreenEdit(open: Boolean) {
+        _uiState.value = _uiState.value.copy(isFullscreenEdit = open)
     }
 }

@@ -29,6 +29,7 @@ fun InputBar(
     onRecordClick: () -> Unit,
     onCameraClick: () -> Unit,
     onImportClick: () -> Unit,
+    onFullscreenClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -163,6 +164,23 @@ fun InputBar(
                         unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                     )
                 )
+
+                // Fullscreen expand button — only visible when text is entered
+                if (inputText.isNotBlank()) {
+                    FilledTonalIconButton(
+                        onClick = onFullscreenClick,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Icon(
+                            Icons.Filled.OpenInFull,
+                            contentDescription = "全屏编辑",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
 
                 FilledIconButton(
                     onClick = onSubmit,
