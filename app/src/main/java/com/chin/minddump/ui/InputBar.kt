@@ -1,5 +1,11 @@
 package com.chin.minddump.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -8,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
@@ -27,94 +34,148 @@ fun InputBar(
     Surface(
         modifier = modifier.fillMaxWidth(),
         tonalElevation = 2.dp,
-        shadowElevation = 8.dp
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-                .imePadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .imePadding(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Action buttons row — compact
+            // Row 1: Action tonal icon buttons
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                IconButton(
+                // Recording — tonal button with animated content
+                FilledTonalIconButton(
                     onClick = onRecordClick,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isRecording) Icons.Filled.StopCircle else Icons.Filled.Mic,
-                        contentDescription = if (isRecording) "停止录音" else "录音",
-                        modifier = Modifier.size(20.dp),
-                        tint = if (isRecording) {
-                            MaterialTheme.colorScheme.error
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = if (isRecording) {
+                            MaterialTheme.colorScheme.errorContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
+                        contentColor = if (isRecording) {
+                            MaterialTheme.colorScheme.onErrorContainer
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )
+                ) {
+                    AnimatedContent(
+                        targetState = isRecording,
+                        transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(200)) },
+                        label = "record_icon"
+                    ) { recording ->
+                        if (recording) {
+                            Icon(
+                                Icons.Filled.StopCircle,
+                                contentDescription = "停止录音"
+                            )
+                        } else {
+                            Icon(
+                                Icons.Filled.Mic,
+                                contentDescription = "录音"
+                            )
+                        }
+                    }
                 }
 
-                IconButton(
+                // Camera
+                FilledTonalIconButton(
                     onClick = onCameraClick,
-                    modifier = Modifier.size(40.dp)
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.PhotoCamera,
-                        contentDescription = "拍照/录像",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        Icons.Filled.PhotoCamera,
+                        contentDescription = "拍照/录像"
                     )
                 }
 
-                IconButton(
+                // Import
+                FilledTonalIconButton(
                     onClick = onImportClick,
-                    modifier = Modifier.size(40.dp)
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.AttachFile,
-                        contentDescription = "导入文件",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        Icons.Filled.AttachFile,
+                        contentDescription = "导入文件"
                     )
                 }
 
+                // Recording indicator chip
                 if (isRecording) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "录音中...",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error
+                    FilterChip(
+                        selected = true,
+                        onClick = {},
+                        label = {
+                            Text(
+                                "录音中...",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Circle,
+                                contentDescription = null,
+                                modifier = Modifier.size(8.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer,
+                            selectedLeadingIconColor = MaterialTheme.colorScheme.error
+                        )
                     )
                 }
             }
 
-            // Text input row — compact
+            // Row 2: Input field + send button
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = onInputChange,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("输入想法...") },
+                    placeholder = {
+                        Text("输入想法...")
+                    },
                     maxLines = 4,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSubmit() }),
-                    shape = MaterialTheme.shapes.extraLarge
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    )
                 )
-
-                Spacer(modifier = Modifier.width(4.dp))
 
                 FilledIconButton(
                     onClick = onSubmit,
                     enabled = inputText.isNotBlank(),
-                    modifier = Modifier.size(40.dp)
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        Icons.AutoMirrored.Filled.Send,
                         contentDescription = "发送",
                         modifier = Modifier.size(18.dp)
                     )
