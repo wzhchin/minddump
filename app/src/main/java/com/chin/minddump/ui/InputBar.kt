@@ -19,22 +19,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.chin.minddump.storage.Space
 
 @Composable
 fun InputBar(
     inputText: String,
     isRecording: Boolean,
+    currentSpace: Space,
     onInputChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onRecordClick: () -> Unit,
     onCameraClick: () -> Unit,
     onImportClick: () -> Unit,
+    onSpaceToggle: () -> Unit,
     onFullscreenClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val backgroundTheme = LocalBackgroundTheme.current
     Surface(
         modifier = modifier.fillMaxWidth(),
-        tonalElevation = 2.dp,
+        tonalElevation = backgroundTheme.tonalElevation,
         shadowElevation = 8.dp,
         color = MaterialTheme.colorScheme.surfaceContainer
     ) {
@@ -139,6 +143,14 @@ fun InputBar(
                         )
                     )
                 }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Space switch
+                SpaceSwitchButton(
+                    currentSpace = currentSpace,
+                    onClick = onSpaceToggle
+                )
             }
 
             // Row 2: Input field + send button

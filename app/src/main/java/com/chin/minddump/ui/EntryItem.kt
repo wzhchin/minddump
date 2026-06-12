@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.Notes
@@ -57,10 +58,14 @@ fun EntryList(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         reverseLayout = true
     ) {
-        items(entries, key = { it.file.absolutePath }) { entry ->
+        items(
+            items = entries,
+            key = { it.file.absolutePath },
+            contentType = { it.type.name },
+        ) { entry ->
             EntryItem(
                 entry = entry,
                 onClick = { onEntryClick(entry) },
@@ -77,48 +82,22 @@ fun EntryItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    when (entry.type) {
-        EntryType.TEXT -> {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = onClick,
-                        onLongClick = onLongClick
-                    ),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
-                TextEntryContent(entry)
-            }
-        }
-        EntryType.PHOTO -> {
-            ElevatedCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = onClick,
-                        onLongClick = onLongClick
-                    ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                PhotoEntryContent(entry)
-            }
-        }
-        else -> {
-            ElevatedCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = onClick,
-                        onLongClick = onLongClick
-                    ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                OtherEntryContent(entry)
-            }
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+    ) {
+        when (entry.type) {
+            EntryType.PHOTO -> PhotoEntryContent(entry)
+            EntryType.TEXT -> TextEntryContent(entry)
+            else -> OtherEntryContent(entry)
         }
     }
 }
@@ -150,17 +129,19 @@ private fun TextEntryContent(entry: MindDumpEntry) {
             }
             Text(
                 text = textContent,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 5,
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = formatEntryMeta(entry),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = formatEntryMeta(entry),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -168,6 +149,7 @@ private fun TextEntryContent(entry: MindDumpEntry) {
 @Composable
 private fun PhotoEntryContent(entry: MindDumpEntry) {
     Column(modifier = Modifier.fillMaxWidth()) {
+        // Image area — NIA style: 180dp height
         val context = LocalContext.current
         var isLoading by remember { mutableStateOf(true) }
         var isError by remember { mutableStateOf(false) }
@@ -186,40 +168,39 @@ private fun PhotoEntryContent(entry: MindDumpEntry) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 320.dp)
-                .clip(MaterialTheme.shapes.medium),
+                .height(180.dp)
+                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
             contentAlignment = Alignment.Center,
         ) {
             if (isLoading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(32.dp),
-                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(80.dp),
                     color = MaterialTheme.colorScheme.tertiary,
                 )
             }
             Image(
                 painter = painter,
                 contentDescription = "照片",
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
                 alpha = if (isError) 0f else 1f,
             )
         }
 
-        // Meta info below image
+        // Content area — 16dp padding, NIA style
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Filled.PhotoCamera,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(14.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = formatEntryMeta(entry),
                 style = MaterialTheme.typography.labelSmall,
@@ -255,7 +236,7 @@ private fun OtherEntryContent(entry: MindDumpEntry) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = entry.file.name,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

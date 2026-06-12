@@ -37,11 +37,13 @@ fun SpaceSwitchButton(
         label = "space_content_color"
     )
 
-    SmallFloatingActionButton(
+    FilledTonalIconButton(
         onClick = onClick,
         modifier = modifier,
-        containerColor = containerColor,
-        contentColor = contentColor
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        )
     ) {
         Icon(
             imageVector = when (currentSpace) {

@@ -11,26 +11,54 @@ import java.util.Locale
 
 /**
  * Handles all file operations for MindDump.
- * Directory layout: /sdcard/MindDump/{Public,Private}/YYYY-MM-DD/
+ * Directory layout: {workDir}/{Public,Private}/YYYY-MM-DD/
  */
 class FileStorageEngine(private val context: Context) {
 
+    private val prefs = StoragePreferences(context)
+
     companion object {
-        private const val ROOT_DIR = "MindDump"
+        private const val DEFAULT_ROOT_DIR = "MindDump"
         private val DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         private val TIME_FORMAT = SimpleDateFormat("HHmmss", Locale.getDefault())
+    }
 
-        fun getRootDir(): File {
-            return File(Environment.getExternalStorageDirectory(), ROOT_DIR)
-        }
+    /**
+     * Get the current root directory.
+     * Falls back to /sdcard/MindDump/ if not yet configured.
+     */
+    fun getRootDir(): File {
+        val path = prefs.getWorkDir()
+        return if (path != null) File(path) else File(Environment.getExternalStorageDirectory(), DEFAULT_ROOT_DIR)
+    }
 
-        fun getSpaceDir(space: Space, date: String): File {
-            return File(getRootDir(), "${space.folderName}/$date")
-        }
+    /**
+     * Get the display path for the current root directory.
+     */
+    fun getRootDirPath(): String {
+        return getRootDir().absolutePath
+    }
 
-        fun getTodayDir(space: Space): File {
-            return getSpaceDir(space, DATE_FORMAT.format(Date()))
-        }
+    /**
+     * Set a new work directory.
+     */
+    fun setWorkDir(path: String) {
+        prefs.setWorkDir(path)
+    }
+
+    /**
+     * Check if a work directory has been configured.
+     */
+    fun isWorkDirConfigured(): Boolean {
+        return prefs.isConfigured()
+    }
+
+    fun getSpaceDir(space: Space, date: String): File {
+        return File(getRootDir(), "${space.folderName}/$date")
+    }
+
+    fun getTodayDir(space: Space): File {
+        return getSpaceDir(space, DATE_FORMAT.format(Date()))
     }
 
     /**
@@ -141,6 +169,37 @@ class FileStorageEngine(private val context: Context) {
      */
     fun deleteEntry(entry: MindDumpEntry): Boolean {
         return entry.file.delete()
+    }
+
+    /**
+     * Count all files recursively under the current root directory.
+     */
+    fun countFiles(): Int {
+        val root = getRootDir()
+        if (!root.exists()) return 0
+        return root.walkTopDown().filter { it.isFile }.count()
+    }
+
+    /**
+     * Count all files recursively under a given directory.
+     */
+    fun countFilesIn(dir: File): Int {
+        if (!dir.exists()) return 0
+        return dir.walkTopDown().filter { it.isFile }.count()
+    }
+
+    /**
+     * Migrate all files from the current root directory to a new root.
+     * Preserves the {Public,Private}/YYYY-MM-DD/ structure.
+     */
+    fun migrateTo(newRoot: File) {
+        val oldRoot = getRootDir()
+        if (!oldRoot.exists()) return
+
+        // Copy entire directory tree
+        oldRoot.copyRecursively(newRoot, overwrite = true)
+        // Delete old files
+        oldRoot.deleteRecursively()
     }
 
     private fun extractTimestamp(fileName: String): String {

@@ -1,14 +1,9 @@
 package com.chin.minddump.ui
 
 import android.app.Application
-import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.FileStorageEngine
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
@@ -17,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 data class MindDumpUiState(
     val currentSpace: Space = Space.PUBLIC,
@@ -29,6 +25,13 @@ data class MindDumpUiState(
     val storagePermissionGranted: Boolean = false,
     val audioPermissionGranted: Boolean = false,
     val cameraPermissionGranted: Boolean = false,
+    // Work directory settings
+    val workDir: String = "",
+    val showSettings: Boolean = false,
+    val showMigrationDialog: Boolean = false,
+    val pendingNewDir: String? = null,
+    val currentFileCount: Int = 0,
+    val newDirFileCount: Int = 0,
 )
 
 class MindDumpViewModel(application: Application) : AndroidViewModel(application) {
@@ -40,6 +43,9 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
 
     init {
         checkStoragePermission()
+        _uiState.value = _uiState.value.copy(
+            workDir = storageEngine.getRootDirPath()
+        )
     }
 
     fun checkStoragePermission() {
@@ -85,7 +91,7 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(isRecording = true)
     }
 
-    fun getRecordingFile(): java.io.File {
+    fun getRecordingFile(): File {
         return storageEngine.getRecordingFile(_uiState.value.currentSpace)
     }
 
@@ -94,11 +100,11 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
         refreshEntries()
     }
 
-    fun getPhotoFile(): java.io.File {
+    fun getPhotoFile(): File {
         return storageEngine.getPhotoFile(_uiState.value.currentSpace)
     }
 
-    fun getVideoFile(): java.io.File {
+    fun getVideoFile(): File {
         return storageEngine.getVideoFile(_uiState.value.currentSpace)
     }
 
@@ -134,5 +140,73 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
 
     fun setFullscreenEdit(open: Boolean) {
         _uiState.value = _uiState.value.copy(isFullscreenEdit = open)
+    }
+
+    // --- Work directory ---
+
+    fun isWorkDirConfigured(): Boolean = storageEngine.isWorkDirConfigured()
+
+    fun setShowSettings(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showSettings = show)
+    }
+
+    /**
+     * Request migration to a new directory.
+     * Checks both current and new directory for existing files.
+     * Shows migration dialog if either has files; otherwise switches directly.
+     */
+    fun requestMigration(newPath: String) {
+        val currentCount = storageEngine.countFiles()
+        val newDir = File(newPath)
+        val newCount = storageEngine.countFilesIn(newDir)
+
+        if (currentCount == 0 && newCount == 0) {
+            // Both empty — switch directly
+            applyNewDir(newPath)
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            showMigrationDialog = true,
+            pendingNewDir = newPath,
+            currentFileCount = currentCount,
+            newDirFileCount = newCount,
+        )
+    }
+
+    fun confirmMigration() {
+        val newPath = _uiState.value.pendingNewDir ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val newRoot = File(newPath)
+            storageEngine.migrateTo(newRoot)
+            applyNewDir(newPath)
+        }
+    }
+
+    fun skipMigration() {
+        val newPath = _uiState.value.pendingNewDir ?: return
+        applyNewDir(newPath)
+    }
+
+    fun cancelMigration() {
+        _uiState.value = _uiState.value.copy(
+            showMigrationDialog = false,
+            pendingNewDir = null,
+            currentFileCount = 0,
+            newDirFileCount = 0,
+        )
+    }
+
+    private fun applyNewDir(newPath: String) {
+        storageEngine.setWorkDir(newPath)
+        _uiState.value = _uiState.value.copy(
+            workDir = newPath,
+            showMigrationDialog = false,
+            showSettings = false,
+            pendingNewDir = null,
+            currentFileCount = 0,
+            newDirFileCount = 0,
+        )
+        refreshEntries()
     }
 }

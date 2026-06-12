@@ -114,12 +114,13 @@ class CameraManager {
         val file = photoFile ?: return
         val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
 
+        val mainExecutor = context.mainExecutor
         imageCapture?.takePicture(
             outputOptions,
             executor,
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    onSaved()
+                    mainExecutor.execute(onSaved)
                 }
 
                 override fun onError(exc: ImageCaptureException) {
@@ -138,13 +139,14 @@ class CameraManager {
 
         val fileOutputOptions = FileOutputOptions.Builder(file).build()
 
+        val mainExecutor = context.mainExecutor
         currentRecording = recorder
             .prepareRecording(context, fileOutputOptions)
             .start(executor) { recordEvent ->
                 when (recordEvent) {
                     is VideoRecordEvent.Finalize -> {
                         if (!recordEvent.hasError()) {
-                            onSaved()
+                            mainExecutor.execute(onSaved)
                         } else {
                             Log.e(
                                 "CameraManager",
