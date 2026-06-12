@@ -23,6 +23,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import com.chin.minddump.ui.theme.GradientColors
+import com.chin.minddump.ui.theme.LocalAnimationDuration
+import com.chin.minddump.ui.theme.LocalGradientColors
+import com.chin.minddump.ui.theme.LocalMotionCurve
+import com.chin.minddump.ui.theme.isReduceMotionEnabled
+import com.chin.minddump.ui.theme.rememberAnimationDuration
+import com.chin.minddump.ui.theme.rememberMotionCurve
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -269,6 +276,19 @@ fun MindDumpTheme(
             TintTheme()
         }
 
+    // Gradient colors
+    val gradientColors =
+        GradientColors(
+            primaryGradient = Pair(colorScheme.primary, colorScheme.tertiary),
+            cardGradient = Pair(colorScheme.surfaceContainerLow, colorScheme.surfaceContainer),
+            inputGradient = Pair(colorScheme.surfaceContainerHigh, colorScheme.surfaceContainerHighest),
+        )
+
+    // Reduced motion
+    val reduceMotion = context.isReduceMotionEnabled()
+    val animationDuration = rememberAnimationDuration(reduceMotion)
+    val motionCurve = rememberMotionCurve(reduceMotion)
+
     // Status bar
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -284,6 +304,9 @@ fun MindDumpTheme(
     CompositionLocalProvider(
         LocalBackgroundTheme provides backgroundTheme,
         LocalTintTheme provides tintTheme,
+        LocalGradientColors provides gradientColors,
+        LocalAnimationDuration provides animationDuration,
+        LocalMotionCurve provides motionCurve,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
