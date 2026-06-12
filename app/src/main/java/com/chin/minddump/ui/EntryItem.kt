@@ -1,7 +1,7 @@
 package com.chin.minddump.ui
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,16 +12,21 @@ import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.Image
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import coil.size.Scale
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.MindDumpEntry
 import java.text.SimpleDateFormat
@@ -163,36 +168,41 @@ private fun TextEntryContent(entry: MindDumpEntry) {
 @Composable
 private fun PhotoEntryContent(entry: MindDumpEntry) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Load and display image thumbnail
-        val bitmap = remember(entry.file) {
-            try {
-                // Decode with sampling for efficient thumbnail
-                val options = BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                }
-                BitmapFactory.decodeFile(entry.file.absolutePath, options)
+        val context = LocalContext.current
+        var isLoading by remember { mutableStateOf(true) }
+        var isError by remember { mutableStateOf(false) }
+        val painter = rememberAsyncImagePainter(
+            model = ImageRequest.Builder(context)
+                .data(entry.file)
+                .size(600)
+                .scale(Scale.FILL)
+                .build(),
+            onState = { state ->
+                isLoading = state is AsyncImagePainter.State.Loading
+                isError = state is AsyncImagePainter.State.Error
+            },
+        )
 
-                val targetWidth = 600
-                val sampleSize = maxOf(1, options.outWidth / targetWidth)
-
-                val decodeOptions = BitmapFactory.Options().apply {
-                    inSampleSize = sampleSize
-                }
-                BitmapFactory.decodeFile(entry.file.absolutePath, decodeOptions)
-            } catch (_: Exception) {
-                null
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 320.dp)
+                .clip(MaterialTheme.shapes.medium),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(32.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
             }
-        }
-
-        if (bitmap != null) {
             Image(
-                bitmap = bitmap.asImageBitmap(),
+                painter = painter,
                 contentDescription = "照片",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 320.dp)
-                    .clip(MaterialTheme.shapes.medium),
-                contentScale = ContentScale.Crop
+                modifier = Modifier.fillMaxWidth(),
+                contentScale = ContentScale.Crop,
+                alpha = if (isError) 0f else 1f,
             )
         }
 
