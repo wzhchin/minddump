@@ -14,7 +14,6 @@ import java.time.format.DateTimeFormatter
  * Directory layout: {workDir}/{Public,Private}/YYYY-MM-DD/
  */
 class FileStorageEngine(private val context: Context) {
-
     private val prefs = StoragePreferences(context)
 
     companion object {
@@ -24,6 +23,7 @@ class FileStorageEngine(private val context: Context) {
     }
 
     private fun todayDateStr(): String = LocalDate.now().format(DATE_FORMAT)
+
     private fun nowTimestampStr(): String = LocalTime.now().format(TIME_FORMAT)
 
     /**
@@ -56,7 +56,10 @@ class FileStorageEngine(private val context: Context) {
         return prefs.isConfigured()
     }
 
-    fun getSpaceDir(space: Space, date: String): File {
+    fun getSpaceDir(
+        space: Space,
+        date: String,
+    ): File {
         return File(getRootDir(), "${space.folderName}/$date")
     }
 
@@ -85,7 +88,10 @@ class FileStorageEngine(private val context: Context) {
     /**
      * Save a text entry as Markdown.
      */
-    fun saveTextEntry(space: Space, content: String): File {
+    fun saveTextEntry(
+        space: Space,
+        content: String,
+    ): File {
         val dir = ensureTodayDir(space)
         val timestamp = nowTimestampStr()
         val file = File(dir, "文字_$timestamp.md")
@@ -123,7 +129,11 @@ class FileStorageEngine(private val context: Context) {
     /**
      * Import a file from a content URI.
      */
-    fun importFile(space: Space, uri: Uri, originalFileName: String): File {
+    fun importFile(
+        space: Space,
+        uri: Uri,
+        originalFileName: String,
+    ): File {
         val dir = ensureTodayDir(space)
         val timestamp = nowTimestampStr()
         val destFile = File(dir, "文件_${timestamp}_$originalFileName")
@@ -158,8 +168,8 @@ class FileStorageEngine(private val context: Context) {
                                 type = type,
                                 space = space,
                                 dateFolder = dateFolder,
-                                timestamp = extractTimestamp(file.name)
-                            )
+                                timestamp = extractTimestamp(file.name),
+                            ),
                         )
                     }
             }

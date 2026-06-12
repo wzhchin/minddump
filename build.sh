@@ -32,13 +32,18 @@ case "$TASK" in
         ./gradlew test
         echo "✅ 测试全部通过"
         ;;
+    lint)
+        echo "🔍 运行代码检查..."
+        ./gradlew detekt ktlintCheck
+        echo "✅ 代码检查通过"
+        ;;
     install)
         echo "📲 构建 debug 并安装到设备..."
         ./gradlew installDebug
         echo "✅ 已安装到设备"
         ;;
     *)
-        echo "用法: $0 [debug|release|test|install]"
+        echo "用法: $0 [debug|release|test|lint|install]"
         exit 1
         ;;
 esac

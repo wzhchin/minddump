@@ -1,6 +1,7 @@
 package com.chin.minddump.ui
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
@@ -8,142 +9,117 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chin.minddump.audio.AudioRecorder
-import com.chin.minddump.camera.CameraManager
+import com.chin.minddump.R
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
+import com.chin.minddump.ui.components.BiometricGate
+import com.chin.minddump.ui.components.DeleteConfirmDialog
+import com.chin.minddump.ui.components.MigrationDialog
+import com.chin.minddump.ui.components.PasswordInputDialog
+import com.chin.minddump.ui.components.PasswordSetupDialog
+import com.chin.minddump.ui.components.SettingsDialog
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel: MindDumpViewModel = viewModel(),
+    audioRecorder: AudioRecorder,
     onNavigateToCamera: () -> Unit = {},
     onNavigateToFullscreenEdit: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    val audioRecorder = remember { AudioRecorder() }
-
-    // Delete confirmation dialog
     var entryToDelete by remember { mutableStateOf<MindDumpEntry?>(null) }
 
-    // Storage permission launcher
-    val storagePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        viewModel.checkStoragePermission()
-    }
-
-    // Audio permission launcher
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        viewModel.setAudioPermissionGranted(granted)
-        if (granted) {
-            val file = viewModel.getRecordingFile()
-            audioRecorder.start(context, file)
-            viewModel.startRecording()
+    // --- Launchers ---
+    val storagePermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            viewModel.checkStoragePermission()
         }
-    }
 
-    // Camera permission launcher
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        viewModel.setCameraPermissionGranted(granted)
-        if (granted) {
-            onNavigateToCamera()
-        }
-    }
-
-    // File import launcher
-    val fileImportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let {
-            val fileName = getFileName(context, it)
-            viewModel.importFile(it, fileName)
-        }
-    }
-
-    // SAF directory picker launcher
-    val dirPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        uri?.let {
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(it, flags)
-
-            val path = resolveTreeUriToPath(it)
-            if (path != null) {
-                val dir = java.io.File(path)
-                if (dir.exists() && dir.canWrite()) {
-                    viewModel.requestMigration(path)
-                } else {
-                    Toast.makeText(context, "目录不可写，请选择其他位置", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Toast.makeText(context, "不支持的存储位置，请选择内部存储上的目录", Toast.LENGTH_LONG).show()
+    val audioPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            viewModel.setAudioPermissionGranted(granted)
+            if (granted) {
+                audioRecorder.start(context, viewModel.getRecordingFile())
+                viewModel.startRecording()
             }
         }
-    }
 
-    // Grant storage permission on first launch
+    val cameraPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            viewModel.setCameraPermissionGranted(granted)
+            if (granted) onNavigateToCamera()
+        }
+
+    val fileImportLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            uri?.let { viewModel.importFile(it, getFileName(context, it)) }
+        }
+
+    val dirPickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+            uri?.let { handleDirPick(context, it, viewModel) }
+        }
+
+    // --- Init effects ---
     LaunchedEffect(Unit) {
         if (!viewModel.uiState.value.storagePermissionGranted) {
-            try {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                    data = Uri.parse("package:com.chin.minddump")
-                }
-                storagePermissionLauncher.launch(intent)
-            } catch (_: ActivityNotFoundException) {
-                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                storagePermissionLauncher.launch(intent)
-            }
+            requestStoragePermission(storagePermissionLauncher)
         }
     }
 
-    // First-launch directory picker
     LaunchedEffect(uiState.storagePermissionGranted) {
         if (uiState.storagePermissionGranted && !viewModel.isWorkDirConfigured()) {
             dirPickerLauncher.launch(null)
         }
     }
 
-    // Biometric auth for Private space switch
-    LaunchedEffect(uiState.pendingSpaceSwitch) {
-        if (uiState.pendingSpaceSwitch) {
-            // BiometricHelper is handled in the hosting composable (MindDumpNavGraph level)
-            // Here we just observe; actual auth is triggered by the space switch button
-        }
-    }
-
+    // --- Theme + Layout ---
     MindDumpTheme(darkTheme = uiState.isDarkTheme) {
         NiaBackground {
             Scaffold(
                 topBar = {
                     CenterAlignedTopAppBar(
                         title = {
+                            val spaceTitle = when (uiState.currentSpace) {
+                                Space.PUBLIC -> stringResource(R.string.space_public)
+                                Space.PRIVATE -> stringResource(R.string.space_private)
+                            }
                             Text(
-                                text = when (uiState.currentSpace) {
-                                    Space.PUBLIC -> "MindDump · Public"
-                                    Space.PRIVATE -> "MindDump · Private"
-                                },
+                                text = spaceTitle,
                                 style = MaterialTheme.typography.titleLarge,
                             )
                         },
@@ -151,7 +127,7 @@ fun MainScreen(
                             IconButton(onClick = { viewModel.setShowSettings(true) }) {
                                 Icon(
                                     Icons.Filled.Settings,
-                                    contentDescription = "设置",
+                                    contentDescription = stringResource(R.string.settings),
                                     tint = LocalTintTheme.current.iconTint
                                         .takeIf { it != Color.Unspecified }
                                         ?: MaterialTheme.colorScheme.onSurface,
@@ -160,7 +136,7 @@ fun MainScreen(
                         },
                         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                             containerColor = Color.Transparent,
-                        )
+                        ),
                     )
                 },
                 bottomBar = {
@@ -168,159 +144,141 @@ fun MainScreen(
                         inputText = uiState.inputText,
                         isRecording = uiState.isRecording,
                         currentSpace = uiState.currentSpace,
-                        onInputChange = { viewModel.updateInputText(it) },
-                        onSubmit = { viewModel.submitText() },
-                        onRecordClick = {
-                            if (uiState.isRecording) {
-                                audioRecorder.stop()
-                                viewModel.stopRecording()
-                            } else {
-                                audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                            }
-                        },
-                        onCameraClick = {
-                            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
-                        },
-                        onImportClick = {
-                            fileImportLauncher.launch(arrayOf("*/*"))
-                        },
-                        onSpaceToggle = { viewModel.requestSpaceSwitch() },
-                        onFullscreenClick = {
-                            onNavigateToFullscreenEdit()
-                        }
+                        actions = InputBarActions(
+                            onInputChange = { viewModel.updateInputText(it) },
+                            onSubmit = { viewModel.submitText() },
+                            onRecordClick = {
+                                if (uiState.isRecording) {
+                                    audioRecorder.stop()
+                                    viewModel.stopRecording()
+                                } else {
+                                    audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                }
+                            },
+                            onCameraClick = {
+                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                            },
+                            onImportClick = { fileImportLauncher.launch(arrayOf("*/*")) },
+                            onSpaceToggle = { viewModel.requestSpaceSwitch() },
+                            onFullscreenClick = onNavigateToFullscreenEdit,
+                        ),
                     )
                 },
                 containerColor = Color.Transparent,
             ) { paddingValues ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(paddingValues),
                 ) {
-                    EntryList(
-                        entries = uiState.entries,
-                        onEntryClick = { entry ->
-                            openFile(context, entry.file)
-                        },
-                        onEntryLongClick = { entry ->
-                            entryToDelete = entry
-                        },
-                        modifier = Modifier.fillMaxSize()
+                    // Search bar
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = { viewModel.updateSearchQuery(it) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        placeholder = { Text(stringResource(R.string.search_placeholder)) },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.extraLarge,
                     )
+                    // Entry list
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        EntryList(
+                            entries = uiState.entries,
+                            onEntryClick = { openFile(context, it.file) },
+                            onEntryLongClick = { entryToDelete = it },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
 
-            // Delete confirmation dialog
+            // --- Dialogs ---
             entryToDelete?.let { entry ->
-                AlertDialog(
-                    onDismissRequest = { entryToDelete = null },
-                    title = { Text("删除记录") },
-                    text = { Text("确定要删除 \"${entry.file.name}\" 吗？") },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            viewModel.deleteEntry(entry)
-                            entryToDelete = null
-                        }) {
-                            Text("删除", color = MaterialTheme.colorScheme.error)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { entryToDelete = null }) {
-                            Text("取消")
-                        }
-                    }
+                DeleteConfirmDialog(
+                    entry = entry,
+                    onConfirm = { viewModel.deleteEntry(entry); entryToDelete = null },
+                    onDismiss = { entryToDelete = null },
                 )
             }
 
-            // Settings dialog
             if (uiState.showSettings) {
-                AlertDialog(
-                    onDismissRequest = { viewModel.setShowSettings(false) },
-                    title = { Text("设置") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(
-                                "工作目录",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                uiState.workDir,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            OutlinedButton(
-                                onClick = { dirPickerLauncher.launch(null) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("更改目录")
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { viewModel.setShowSettings(false) }) {
-                            Text("完成")
-                        }
-                    }
+                SettingsDialog(
+                    workDir = uiState.workDir,
+                    onChangeDir = { dirPickerLauncher.launch(null) },
+                    onDismiss = { viewModel.setShowSettings(false) },
                 )
             }
 
-            // Migration confirmation dialog
             if (uiState.showMigrationDialog) {
-                AlertDialog(
-                    onDismissRequest = { viewModel.cancelMigration() },
-                    title = { Text("迁移数据") },
-                    text = {
-                        val lines = mutableListOf<String>()
-                        if (uiState.currentFileCount > 0) {
-                            lines.add("当前目录有 ${uiState.currentFileCount} 个文件。")
-                        }
-                        if (uiState.newDirFileCount > 0) {
-                            lines.add("新目录已有 ${uiState.newDirFileCount} 个文件。")
-                        }
-                        lines.add("是否将文件移动到新目录？")
-                        Text(lines.joinToString("\n"))
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { viewModel.confirmMigration() }) {
-                            Text("移动")
-                        }
-                    },
-                    dismissButton = {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { viewModel.cancelMigration() }) {
-                                Text("取消")
-                            }
-                            TextButton(onClick = { viewModel.skipMigration() }) {
-                                Text("直接切换")
-                            }
-                        }
-                    }
+                MigrationDialog(
+                    currentFileCount = uiState.currentFileCount,
+                    newDirFileCount = uiState.newDirFileCount,
+                    onConfirm = { viewModel.confirmMigration() },
+                    onSkip = { viewModel.skipMigration() },
+                    onCancel = { viewModel.cancelMigration() },
                 )
             }
 
-            // Biometric prompt for Private space switch
             val activity = context as? androidx.fragment.app.FragmentActivity
             if (uiState.pendingSpaceSwitch && activity != null) {
-                val biometricHelper = remember { BiometricHelper(activity) }
-                LaunchedEffect(Unit) {
-                    biometricHelper.authenticate(
-                        onSuccess = { viewModel.confirmSpaceSwitch() },
-                        onError = { viewModel.cancelSpaceSwitch() }
-                    )
-                }
+                BiometricGate(
+                    activity = activity,
+                    onSuccess = { viewModel.confirmSpaceSwitch() },
+                    onError = { viewModel.cancelSpaceSwitch() },
+                )
+            }
+
+            if (uiState.showPasswordSetup) {
+                PasswordSetupDialog(
+                    onConfirm = { viewModel.setPassword(it) },
+                    onDismiss = { viewModel.cancelPasswordDialog() },
+                )
+            }
+
+            if (uiState.showPasswordInput) {
+                PasswordInputDialog(
+                    onConfirm = { viewModel.verifyPassword(it) },
+                    onDismiss = { viewModel.cancelPasswordDialog() },
+                )
             }
         }
     }
 }
 
-/**
- * Resolve a SAF tree URI to an absolute file system path.
- * Supports: primary storage (emulated), home storage, removable SD cards.
- * Returns null for unrecognized formats.
- */
+// --- Helper functions ---
+
+private fun requestStoragePermission(
+    launcher: androidx.activity.result.ActivityResultLauncher<Intent>,
+) {
+    try {
+        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+            data = Uri.parse("package:com.chin.minddump")
+        }
+        launcher.launch(intent)
+    } catch (_: ActivityNotFoundException) {
+        launcher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+    }
+}
+
+private fun handleDirPick(
+    context: Context,
+    uri: Uri,
+    viewModel: MindDumpViewModel,
+) {
+    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+    context.contentResolver.takePersistableUriPermission(uri, flags)
+
+    val path = resolveTreeUriToPath(uri)
+    if (path != null) {
+        val dir = File(path)
+        if (dir.exists() && dir.canWrite()) {
+            viewModel.requestMigration(path)
+        } else {
+            Toast.makeText(context, context.getString(R.string.dir_not_writable), Toast.LENGTH_SHORT).show()
+        }
+    } else {
+        Toast.makeText(context, context.getString(R.string.dir_unsupported), Toast.LENGTH_LONG).show()
+    }
+}
+
 private fun resolveTreeUriToPath(treeUri: Uri): String? {
     val docId = DocumentsContract.getTreeDocumentId(treeUri)
     val parts = docId.split(":")
@@ -330,37 +288,34 @@ private fun resolveTreeUriToPath(treeUri: Uri): String? {
             val storageId = parts[0]
             val relativePath = parts[1]
             when (storageId) {
-                "primary" -> {
-                    val basePath = android.os.Environment.getExternalStorageDirectory().absolutePath
-                    if (relativePath.isEmpty()) basePath else "$basePath/$relativePath"
-                }
-                "home" -> {
+                "primary", "home" -> {
                     val basePath = android.os.Environment.getExternalStorageDirectory().absolutePath
                     if (relativePath.isEmpty()) basePath else "$basePath/$relativePath"
                 }
                 else -> {
-                    // Removable storage: /storage/{storageId}/{relativePath}
-                    val candidate = if (relativePath.isEmpty()) "/storage/$storageId" else "/storage/$storageId/$relativePath"
-                    // Verify the path actually exists before returning it
-                    if (java.io.File(candidate).exists()) candidate else null
+                    val candidate = if (relativePath.isEmpty()) {
+                        "/storage/$storageId"
+                    } else {
+                        "/storage/$storageId/$relativePath"
+                    }
+                    if (File(candidate).exists()) candidate else null
                 }
             }
         }
         parts.size == 1 -> {
             val path = parts[0]
-            if (path.startsWith("/") && java.io.File(path).exists()) path
-            else null
+            if (path.startsWith("/") && File(path).exists()) path else null
         }
         else -> null
     }
 }
 
-private fun openFile(context: android.content.Context, file: File) {
+private fun openFile(context: Context, file: File) {
     try {
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
-            file
+            file,
         )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, getMimeType(file))
@@ -368,12 +323,12 @@ private fun openFile(context: android.content.Context, file: File) {
         }
         context.startActivity(intent)
     } catch (e: Exception) {
-        Toast.makeText(context, "无法打开文件: ${e.message}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.cannot_open_file, e.message), Toast.LENGTH_SHORT).show()
     }
 }
 
-private fun getMimeType(file: File): String {
-    return when {
+private fun getMimeType(file: File): String =
+    when {
         file.name.endsWith(".md") || file.name.endsWith(".txt") -> "text/markdown"
         file.name.endsWith(".m4a") || file.name.endsWith(".aac") -> "audio/mp4"
         file.name.endsWith(".jpg") || file.name.endsWith(".jpeg") -> "image/jpeg"
@@ -382,9 +337,8 @@ private fun getMimeType(file: File): String {
         file.name.endsWith(".pdf") -> "application/pdf"
         else -> "application/octet-stream"
     }
-}
 
-private fun getFileName(context: android.content.Context, uri: Uri): String {
+private fun getFileName(context: Context, uri: Uri): String {
     var name = "unknown"
     context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
         val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)

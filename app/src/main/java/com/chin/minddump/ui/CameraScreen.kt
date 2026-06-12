@@ -10,8 +10,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.chin.minddump.R
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.chin.minddump.camera.CameraManager
 
@@ -20,7 +22,7 @@ fun CameraScreen(
     cameraManager: CameraManager,
     onClose: () -> Unit,
     onCaptured: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -32,40 +34,45 @@ fun CameraScreen(
         AndroidView(
             factory = { ctx ->
                 PreviewView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+                    layoutParams =
+                        ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
                     scaleType = PreviewView.ScaleType.FILL_CENTER
                 }.also { previewView ->
                     cameraManager.startPreview(previewView, lifecycleOwner)
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
         )
 
         // Controls overlay
         Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(bottom = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Mode switch
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 FilterChip(
                     selected = !isVideoMode,
-                    onClick = { isVideoMode = false; isRecordingVideo = false },
-                    label = { Text("拍照") }
+                    onClick = {
+                        isVideoMode = false
+                        isRecordingVideo = false
+                    },
+                    label = { Text(stringResource(R.string.photo_mode)) },
                 )
                 FilterChip(
                     selected = isVideoMode,
                     onClick = { isVideoMode = true },
-                    label = { Text("录像") }
+                    label = { Text(stringResource(R.string.video_mode)) },
                 )
             }
 
@@ -74,7 +81,7 @@ fun CameraScreen(
             // Capture button
             Row(
                 horizontalArrangement = Arrangement.spacedBy(32.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Close
                 IconButton(onClick = {
@@ -83,8 +90,8 @@ fun CameraScreen(
                 }) {
                     Icon(
                         imageVector = Icons.Filled.Close,
-                        contentDescription = "关闭",
-                        modifier = Modifier.size(32.dp)
+                        contentDescription = stringResource(R.string.close),
+                        modifier = Modifier.size(32.dp),
                     )
                 }
 
@@ -114,22 +121,30 @@ fun CameraScreen(
                         }
                     },
                     modifier = Modifier.size(64.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = if (isRecordingVideo) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        }
-                    )
+                    colors =
+                        IconButtonDefaults.filledIconButtonColors(
+                            containerColor =
+                                if (isRecordingVideo) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                        ),
                 ) {
                     Icon(
-                        imageVector = if (isVideoMode && isRecordingVideo) {
-                            Icons.Filled.Stop
-                        } else {
-                            Icons.Filled.Camera
-                        },
-                        contentDescription = if (isVideoMode) "录像" else "拍照",
-                        modifier = Modifier.size(32.dp)
+                        imageVector =
+                            if (isVideoMode && isRecordingVideo) {
+                                Icons.Filled.Stop
+                            } else {
+                                Icons.Filled.Camera
+                            },
+                        contentDescription =
+                            if (isVideoMode) {
+                                stringResource(R.string.record_video)
+                            } else {
+                                stringResource(R.string.take_photo)
+                            },
+                        modifier = Modifier.size(32.dp),
                     )
                 }
 
@@ -137,8 +152,8 @@ fun CameraScreen(
                 IconButton(onClick = { cameraManager.switchCamera() }) {
                     Icon(
                         imageVector = Icons.Filled.Cameraswitch,
-                        contentDescription = "切换摄像头",
-                        modifier = Modifier.size(32.dp)
+                        contentDescription = stringResource(R.string.switch_camera),
+                        modifier = Modifier.size(32.dp),
                     )
                 }
             }

@@ -23,7 +23,6 @@ import java.util.concurrent.Executors
  * Manages CameraX operations: preview, photo capture, video recording.
  */
 class CameraManager {
-
     private var cameraProvider: ProcessCameraProvider? = null
     private var preview: Preview? = null
     private var imageCapture: ImageCapture? = null
@@ -39,7 +38,10 @@ class CameraManager {
     /**
      * Set the output files for capture operations.
      */
-    fun setOutputFiles(photo: File, video: File) {
+    fun setOutputFiles(
+        photo: File,
+        video: File,
+    ) {
         photoFile = photo
         videoFile = video
     }
@@ -47,7 +49,10 @@ class CameraManager {
     /**
      * Start camera preview.
      */
-    fun startPreview(previewView: PreviewView, lifecycleOwner: LifecycleOwner) {
+    fun startPreview(
+        previewView: PreviewView,
+        lifecycleOwner: LifecycleOwner,
+    ) {
         val context = previewView.context
         cachedLifecycleOwner = lifecycleOwner
 
@@ -55,19 +60,22 @@ class CameraManager {
         future.addListener({
             cameraProvider = future.get()
 
-            preview = Preview.Builder()
-                .build()
-                .also {
-                    it.surfaceProvider = previewView.surfaceProvider
-                }
+            preview =
+                Preview.Builder()
+                    .build()
+                    .also {
+                        it.surfaceProvider = previewView.surfaceProvider
+                    }
 
-            imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                .build()
+            imageCapture =
+                ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .build()
 
-            val recorder = Recorder.Builder()
-                .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
-                .build()
+            val recorder =
+                Recorder.Builder()
+                    .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
+                    .build()
             videoCapture = VideoCapture.withOutput(recorder)
 
             bindUseCases(lifecycleOwner)
@@ -82,15 +90,15 @@ class CameraManager {
                 cameraSelector,
                 preview,
                 imageCapture,
-                videoCapture
+                videoCapture,
             )
         } catch (e: Exception) {
-            // Some devices may not support video capture with this selector, bind without it
+            Log.w("CameraManager", "Video capture not supported, falling back to photo only", e)
             cameraProvider?.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
                 preview,
-                imageCapture
+                imageCapture,
             )
         }
     }
@@ -99,18 +107,22 @@ class CameraManager {
      * Switch between front and back camera.
      */
     fun switchCamera() {
-        cameraSelector = if (cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
-            CameraSelector.DEFAULT_FRONT_CAMERA
-        } else {
-            CameraSelector.DEFAULT_BACK_CAMERA
-        }
+        cameraSelector =
+            if (cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
+                CameraSelector.DEFAULT_FRONT_CAMERA
+            } else {
+                CameraSelector.DEFAULT_BACK_CAMERA
+            }
         cachedLifecycleOwner?.let { bindUseCases(it) }
     }
 
     /**
      * Take a photo.
      */
-    fun takePhoto(context: Context, onSaved: () -> Unit) {
+    fun takePhoto(
+        context: Context,
+        onSaved: () -> Unit,
+    ) {
         val file = photoFile ?: return
         val outputOptions = ImageCapture.OutputFileOptions.Builder(file).build()
 
@@ -126,36 +138,42 @@ class CameraManager {
                 override fun onError(exc: ImageCaptureException) {
                     Log.e("CameraManager", "Photo capture failed", exc)
                 }
-            }
+            },
         )
     }
 
     /**
      * Start video recording.
      */
-    fun startVideoRecording(context: Context, lifecycleOwner: LifecycleOwner, onSaved: () -> Unit) {
+    @Suppress("UNUSED_PARAMETER")
+    fun startVideoRecording(
+        context: Context,
+        lifecycleOwner: LifecycleOwner,
+        onSaved: () -> Unit,
+    ) {
         val file = videoFile ?: return
         val recorder = videoCapture?.output ?: return
 
         val fileOutputOptions = FileOutputOptions.Builder(file).build()
 
         val mainExecutor = context.mainExecutor
-        currentRecording = recorder
-            .prepareRecording(context, fileOutputOptions)
-            .start(executor) { recordEvent ->
-                when (recordEvent) {
-                    is VideoRecordEvent.Finalize -> {
-                        if (!recordEvent.hasError()) {
-                            mainExecutor.execute(onSaved)
-                        } else {
-                            Log.e(
-                                "CameraManager",
-                                "Video recording failed: ${recordEvent.error}"
-                            )
+        currentRecording =
+            recorder
+                .prepareRecording(context, fileOutputOptions)
+                .start(executor) { recordEvent ->
+                    when (recordEvent) {
+                        is VideoRecordEvent.Finalize -> {
+                            if (!recordEvent.hasError()) {
+                                mainExecutor.execute(onSaved)
+                            } else {
+                                Log.e(
+                                    "CameraManager",
+                                    "Video recording failed: ${recordEvent.error}",
+                                )
+                            }
                         }
                     }
                 }
-            }
     }
 
     /**

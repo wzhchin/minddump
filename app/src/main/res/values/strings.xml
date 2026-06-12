@@ -1,3 +1,86 @@
 <resources>
     <string name="app_name">MindDump</string>
+
+    <!-- Space titles -->
+    <string name="space_public">MindDump · Public</string>
+    <string name="space_private">MindDump · Private</string>
+
+    <!-- Top bar -->
+    <string name="settings">设置</string>
+
+    <!-- Input bar -->
+    <string name="stop_recording">停止录音</string>
+    <string name="start_recording">录音</string>
+    <string name="camera_capture">拍照/录像</string>
+    <string name="import_file">导入文件</string>
+    <string name="recording">录音中…</string>
+    <string name="input_placeholder">输入想法…</string>
+    <string name="fullscreen_edit">全屏编辑</string>
+    <string name="send">发送</string>
+
+    <!-- Entry list -->
+    <string name="empty_list">还没有任何记录\n点击下方输入框开始录入</string>
+
+    <!-- Delete -->
+    <string name="delete_title">删除记录</string>
+    <string name="delete_message">确定要删除 \"%1$s\" 吗？</string>
+    <string name="delete_confirm">删除</string>
+    <string name="cancel">取消</string>
+
+    <!-- Settings dialog -->
+    <string name="settings_title">设置</string>
+    <string name="work_directory">工作目录</string>
+    <string name="change_directory">更改目录</string>
+    <string name="done">完成</string>
+
+    <!-- Migration -->
+    <string name="migration_title">迁移数据</string>
+    <string name="migration_current_files">当前目录有 %1$d 个文件。</string>
+    <string name="migration_new_files">新目录已有 %1$d 个文件。</string>
+    <string name="migration_ask">是否将文件移动到新目录？</string>
+    <string name="move">移动</string>
+    <string name="skip">直接切换</string>
+
+    <!-- Directory picker -->
+    <string name="dir_not_writable">目录不可写，请选择其他位置</string>
+    <string name="dir_unsupported">不支持的存储位置，请选择内部存储上的目录</string>
+
+    <!-- Biometric -->
+    <string name="biometric_title">验证身份</string>
+    <string name="biometric_subtitle">进入 Private 空间需要身份验证</string>
+
+    <!-- Password -->
+    <string name="password_setup_title">设置 Private 密码</string>
+    <string name="password_setup_desc">为 Private 空间设置一个密码。密码用于加密您的私密文件。</string>
+    <string name="password_label">密码</string>
+    <string name="password_confirm_label">确认密码</string>
+    <string name="password_too_short">密码至少需要 4 个字符</string>
+    <string name="password_mismatch">两次输入的密码不一致</string>
+    <string name="password_input_title">验证密码</string>
+    <string name="password_input_desc">请输入 Private 空间密码</string>
+    <string name="confirm">确定</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">搜索…</string>
+
+    <!-- File operations -->
+    <string name="cannot_open_file">无法打开文件: %1$s</string>
+
+    <!-- Camera -->
+    <string name="photo_mode">拍照</string>
+    <string name="video_mode">录像</string>
+    <string name="close">关闭</string>
+    <string name="record_video">录像</string>
+    <string name="take_photo">拍照</string>
+    <string name="switch_camera">切换摄像头</string>
+
+    <!-- Fullscreen edit -->
+    <string name="edit_title">编辑</string>
+
+    <!-- Space switch -->
+    <string name="switch_to_private">切换到 Private</string>
+    <string name="switch_to_public">切换到 Public</string>
+
+    <!-- Entry type display names -->
+    <string name="photo">照片</string>
 </resources>

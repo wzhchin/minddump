@@ -1,6 +1,5 @@
 package com.chin.minddump.storage
 
-import android.content.ContentResolver
 import android.content.Context
 import android.content.SharedPreferences
 import io.mockk.every
@@ -13,7 +12,6 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 class FileStorageEngineTest {
-
     @get:Rule
     val tempFolder = TemporaryFolder()
 
@@ -44,9 +42,21 @@ class FileStorageEngineTest {
     fun `scanEntries returns entries sorted by lastModified newest first`() {
         // Create files with different timestamps
         val dateDir = File(rootDir, "Public/2024-01-01").also { it.mkdirs() }
-        val file1 = File(dateDir, "文字_010000.md").also { it.writeText("first"); it.setLastModified(1000) }
-        val file2 = File(dateDir, "文字_020000.md").also { it.writeText("second"); it.setLastModified(2000) }
-        val file3 = File(dateDir, "文字_030000.md").also { it.writeText("third"); it.setLastModified(500) }
+        val file1 =
+            File(dateDir, "文字_010000.md").also {
+                it.writeText("first")
+                it.setLastModified(1000)
+            }
+        val file2 =
+            File(dateDir, "文字_020000.md").also {
+                it.writeText("second")
+                it.setLastModified(2000)
+            }
+        val file3 =
+            File(dateDir, "文字_030000.md").also {
+                it.writeText("third")
+                it.setLastModified(500)
+            }
 
         val entries = engine.scanEntries(Space.PUBLIC)
         assertEquals(3, entries.size)
@@ -129,13 +139,14 @@ class FileStorageEngineTest {
     @Test
     fun `deleteEntry removes file from disk`() {
         val file = engine.saveTextEntry(Space.PUBLIC, "to be deleted")
-        val entry = MindDumpEntry(
-            file = file,
-            type = EntryType.TEXT,
-            space = Space.PUBLIC,
-            dateFolder = file.parentFile!!.name,
-            timestamp = "000000"
-        )
+        val entry =
+            MindDumpEntry(
+                file = file,
+                type = EntryType.TEXT,
+                space = Space.PUBLIC,
+                dateFolder = file.parentFile!!.name,
+                timestamp = "000000",
+            )
 
         val result = engine.deleteEntry(entry)
 

@@ -1,0 +1,86 @@
+<resources>
+    <string name="app_name">MindDump</string>
+
+    <!-- Space titles -->
+    <string name="space_public">MindDump · Public</string>
+    <string name="space_private">MindDump · Private</string>
+
+    <!-- Top bar -->
+    <string name="settings">Settings</string>
+
+    <!-- Input bar -->
+    <string name="stop_recording">Stop recording</string>
+    <string name="start_recording">Record</string>
+    <string name="camera_capture">Photo/Video</string>
+    <string name="import_file">Import file</string>
+    <string name="recording">Recording…</string>
+    <string name="input_placeholder">Type a thought…</string>
+    <string name="fullscreen_edit">Fullscreen edit</string>
+    <string name="send">Send</string>
+
+    <!-- Entry list -->
+    <string name="empty_list">No entries yet.\nTap the input bar below to get started.</string>
+
+    <!-- Delete -->
+    <string name="delete_title">Delete entry</string>
+    <string name="delete_message">Are you sure you want to delete \"%1$s\"?</string>
+    <string name="delete_confirm">Delete</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Settings dialog -->
+    <string name="settings_title">Settings</string>
+    <string name="work_directory">Work directory</string>
+    <string name="change_directory">Change directory</string>
+    <string name="done">Done</string>
+
+    <!-- Migration -->
+    <string name="migration_title">Migrate data</string>
+    <string name="migration_current_files">Current directory has %1$d files.</string>
+    <string name="migration_new_files">New directory has %1$d files.</string>
+    <string name="migration_ask">Move files to the new directory?</string>
+    <string name="move">Move</string>
+    <string name="skip">Switch directly</string>
+
+    <!-- Directory picker -->
+    <string name="dir_not_writable">Directory is not writable. Please choose another location.</string>
+    <string name="dir_unsupported">Unsupported storage location. Please choose a directory on internal storage.</string>
+
+    <!-- Biometric -->
+    <string name="biometric_title">Verify identity</string>
+    <string name="biometric_subtitle">Authentication required to access Private space</string>
+
+    <!-- Password -->
+    <string name="password_setup_title">Set Private password</string>
+    <string name="password_setup_desc">Set a password for Private space. It will be used to encrypt your private files.</string>
+    <string name="password_label">Password</string>
+    <string name="password_confirm_label">Confirm password</string>
+    <string name="password_too_short">Password must be at least 4 characters</string>
+    <string name="password_mismatch">Passwords do not match</string>
+    <string name="password_input_title">Enter password</string>
+    <string name="password_input_desc">Enter the Private space password</string>
+    <string name="confirm">OK</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">Search…</string>
+
+    <!-- File operations -->
+    <string name="cannot_open_file">Cannot open file: %1$s</string>
+
+    <!-- Camera -->
+    <string name="photo_mode">Photo</string>
+    <string name="video_mode">Video</string>
+    <string name="close">Close</string>
+    <string name="record_video">Record</string>
+    <string name="take_photo">Capture</string>
+    <string name="switch_camera">Switch camera</string>
+
+    <!-- Fullscreen edit -->
+    <string name="edit_title">Edit</string>
+
+    <!-- Space switch -->
+    <string name="switch_to_private">Switch to Private</string>
+    <string name="switch_to_public">Switch to Public</string>
+
+    <!-- Entry type display names -->
+    <string name="photo">Photo</string>
+</resources>

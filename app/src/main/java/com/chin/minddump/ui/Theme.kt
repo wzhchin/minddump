@@ -4,7 +4,6 @@ import android.app.Activity
 import android.os.Build
 import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LocalAbsoluteTonalElevation
 import androidx.compose.material3.MaterialTheme
@@ -14,7 +13,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -64,56 +62,58 @@ internal val Red90 = Color(0xFFFFDAD6)
 // Color schemes
 // ──────────────────────────────────────────────
 
-private val LightDefaultColorScheme = lightColorScheme(
-    primary = Purple40,
-    onPrimary = Color.White,
-    primaryContainer = Purple90,
-    onPrimaryContainer = Purple10,
-    secondary = Orange40,
-    onSecondary = Color.White,
-    secondaryContainer = Orange90,
-    onSecondaryContainer = Orange10,
-    tertiary = Blue40,
-    onTertiary = Color.White,
-    tertiaryContainer = Blue90,
-    onTertiaryContainer = Blue10,
-    error = Red40,
-    onError = Color.White,
-    errorContainer = Red90,
-    onErrorContainer = Blue10,
-    background = DarkPurpleGray99,
-    onBackground = DarkPurpleGray10,
-    surface = DarkPurpleGray99,
-    onSurface = DarkPurpleGray10,
-    surfaceVariant = PurpleGray90,
-    onSurfaceVariant = PurpleGray30,
-    inverseSurface = DarkPurpleGray10,
-    inverseOnSurface = DarkPurpleGray95,
-    outline = PurpleGray50,
-)
+private val LightDefaultColorScheme =
+    lightColorScheme(
+        primary = Purple40,
+        onPrimary = Color.White,
+        primaryContainer = Purple90,
+        onPrimaryContainer = Purple10,
+        secondary = Orange40,
+        onSecondary = Color.White,
+        secondaryContainer = Orange90,
+        onSecondaryContainer = Orange10,
+        tertiary = Blue40,
+        onTertiary = Color.White,
+        tertiaryContainer = Blue90,
+        onTertiaryContainer = Blue10,
+        error = Red40,
+        onError = Color.White,
+        errorContainer = Red90,
+        onErrorContainer = Blue10,
+        background = DarkPurpleGray99,
+        onBackground = DarkPurpleGray10,
+        surface = DarkPurpleGray99,
+        onSurface = DarkPurpleGray10,
+        surfaceVariant = PurpleGray90,
+        onSurfaceVariant = PurpleGray30,
+        inverseSurface = DarkPurpleGray10,
+        inverseOnSurface = DarkPurpleGray95,
+        outline = PurpleGray50,
+    )
 
-private val DarkDefaultColorScheme = darkColorScheme(
-    primary = Purple80,
-    onPrimary = Purple10,
-    primaryContainer = Purple30,
-    onPrimaryContainer = Purple90,
-    secondary = Orange90,
-    onSecondary = Orange10,
-    tertiary = Blue90,
-    onTertiary = Blue10,
-    error = Red80,
-    onError = Blue10,
-    errorContainer = Red90,
-    background = DarkPurpleGray10,
-    onBackground = DarkPurpleGray90,
-    surface = DarkPurpleGray10,
-    onSurface = DarkPurpleGray90,
-    surfaceVariant = PurpleGray30,
-    onSurfaceVariant = PurpleGray80,
-    inverseSurface = DarkPurpleGray90,
-    inverseOnSurface = DarkPurpleGray10,
-    outline = PurpleGray60,
-)
+private val DarkDefaultColorScheme =
+    darkColorScheme(
+        primary = Purple80,
+        onPrimary = Purple10,
+        primaryContainer = Purple30,
+        onPrimaryContainer = Purple90,
+        secondary = Orange90,
+        onSecondary = Orange10,
+        tertiary = Blue90,
+        onTertiary = Blue10,
+        error = Red80,
+        onError = Blue10,
+        errorContainer = Red90,
+        background = DarkPurpleGray10,
+        onBackground = DarkPurpleGray90,
+        surface = DarkPurpleGray10,
+        onSurface = DarkPurpleGray90,
+        surfaceVariant = PurpleGray30,
+        onSurfaceVariant = PurpleGray80,
+        inverseSurface = DarkPurpleGray90,
+        inverseOnSurface = DarkPurpleGray10,
+        outline = PurpleGray60,
+    )
 
 // ──────────────────────────────────────────────
 // Theme extension: Background
@@ -142,60 +142,71 @@ val LocalTintTheme = staticCompositionLocalOf { TintTheme() }
 // Typography (only styles actually used)
 // ──────────────────────────────────────────────
 
-private val AppTypography = Typography(
-    titleLarge = TextStyle(
-        fontWeight = FontWeight.Bold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp,
-        lineHeightStyle = LineHeightStyle(
-            alignment = LineHeightStyle.Alignment.Bottom,
-            trim = LineHeightStyle.Trim.LastLineBottom,
-        ),
-    ),
-    titleMedium = TextStyle(
-        fontWeight = FontWeight.Bold,
-        fontSize = 18.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.1.sp,
-    ),
-    bodyLarge = TextStyle(
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp,
-        lineHeightStyle = LineHeightStyle(
-            alignment = LineHeightStyle.Alignment.Center,
-            trim = LineHeightStyle.Trim.None,
-        ),
-    ),
-    bodySmall = TextStyle(
-        fontWeight = FontWeight.Normal,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.4.sp,
-    ),
-    labelMedium = TextStyle(
-        fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp,
-        lineHeightStyle = LineHeightStyle(
-            alignment = LineHeightStyle.Alignment.Center,
-            trim = LineHeightStyle.Trim.LastLineBottom,
-        ),
-    ),
-    labelSmall = TextStyle(
-        fontWeight = FontWeight.Medium,
-        fontSize = 10.sp,
-        lineHeight = 14.sp,
-        letterSpacing = 0.sp,
-        lineHeightStyle = LineHeightStyle(
-            alignment = LineHeightStyle.Alignment.Center,
-            trim = LineHeightStyle.Trim.LastLineBottom,
-        ),
-    ),
-)
+private val AppTypography =
+    Typography(
+        titleLarge =
+            TextStyle(
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                lineHeight = 28.sp,
+                letterSpacing = 0.sp,
+                lineHeightStyle =
+                    LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Bottom,
+                        trim = LineHeightStyle.Trim.LastLineBottom,
+                    ),
+            ),
+        titleMedium =
+            TextStyle(
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                lineHeight = 24.sp,
+                letterSpacing = 0.1.sp,
+            ),
+        bodyLarge =
+            TextStyle(
+                fontWeight = FontWeight.Normal,
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                letterSpacing = 0.5.sp,
+                lineHeightStyle =
+                    LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.None,
+                    ),
+            ),
+        bodySmall =
+            TextStyle(
+                fontWeight = FontWeight.Normal,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                letterSpacing = 0.4.sp,
+            ),
+        labelMedium =
+            TextStyle(
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                letterSpacing = 0.5.sp,
+                lineHeightStyle =
+                    LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.LastLineBottom,
+                    ),
+            ),
+        labelSmall =
+            TextStyle(
+                fontWeight = FontWeight.Medium,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                letterSpacing = 0.sp,
+                lineHeightStyle =
+                    LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.LastLineBottom,
+                    ),
+            ),
+    )
 
 // ──────────────────────────────────────────────
 // Background component
@@ -234,26 +245,29 @@ fun MindDumpTheme(
     val context = LocalContext.current
 
     // Color scheme
-    val colorScheme = when {
-        supportsDynamicTheming() -> {
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    val colorScheme =
+        when {
+            supportsDynamicTheming() -> {
+                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            }
+            darkTheme -> DarkDefaultColorScheme
+            else -> LightDefaultColorScheme
         }
-        darkTheme -> DarkDefaultColorScheme
-        else -> LightDefaultColorScheme
-    }
 
     // Background theme
-    val backgroundTheme = BackgroundTheme(
-        color = colorScheme.surface,
-        tonalElevation = 2.dp,
-    )
+    val backgroundTheme =
+        BackgroundTheme(
+            color = colorScheme.surface,
+            tonalElevation = 2.dp,
+        )
 
     // Tint theme
-    val tintTheme = if (supportsDynamicTheming()) {
-        TintTheme(colorScheme.primary)
-    } else {
-        TintTheme()
-    }
+    val tintTheme =
+        if (supportsDynamicTheming()) {
+            TintTheme(colorScheme.primary)
+        } else {
+            TintTheme()
+        }
 
     // Status bar
     val view = LocalView.current

@@ -7,7 +7,6 @@ import android.content.SharedPreferences
  * Persists the user-selected work directory across sessions.
  */
 class StoragePreferences(context: Context) {
-
     private val prefs: SharedPreferences =
         context.getSharedPreferences("minddump_prefs", Context.MODE_PRIVATE)
 

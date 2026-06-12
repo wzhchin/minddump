@@ -8,11 +8,14 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.camera.CameraManager
 
 sealed class Screen(val route: String) {
     data object Main : Screen("main")
+
     data object Camera : Screen("camera")
+
     data object FullscreenEdit : Screen("fullscreen_edit")
 }
 
@@ -20,6 +23,7 @@ sealed class Screen(val route: String) {
 fun MindDumpNavGraph(
     viewModel: MindDumpViewModel,
     cameraManager: CameraManager,
+    audioRecorder: AudioRecorder,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
@@ -33,6 +37,7 @@ fun MindDumpNavGraph(
         composable(Screen.Main.route) {
             MainScreen(
                 viewModel = viewModel,
+                audioRecorder = audioRecorder,
                 onNavigateToCamera = { navController.navigate(Screen.Camera.route) },
                 onNavigateToFullscreenEdit = { navController.navigate(Screen.FullscreenEdit.route) },
             )
@@ -45,7 +50,7 @@ fun MindDumpNavGraph(
             videoFile.parentFile?.mkdirs()
             cameraManager.setOutputFiles(
                 photo = photoFile,
-                video = videoFile
+                video = videoFile,
             )
             CameraScreen(
                 cameraManager = cameraManager,
@@ -54,7 +59,7 @@ fun MindDumpNavGraph(
                     viewModel.onMediaCaptured()
                     navController.popBackStack()
                 },
-                modifier = Modifier
+                modifier = Modifier,
             )
         }
 
@@ -66,7 +71,7 @@ fun MindDumpNavGraph(
                 onSubmit = {
                     viewModel.submitText()
                     navController.popBackStack()
-                }
+                },
             )
         }
     }

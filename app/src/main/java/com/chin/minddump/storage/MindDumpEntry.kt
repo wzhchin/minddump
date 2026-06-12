@@ -10,12 +10,12 @@ data class MindDumpEntry(
     val type: EntryType,
     val space: Space,
     val dateFolder: String, // YYYY-MM-DD
-    val timestamp: String,  // HHmmss
+    val timestamp: String, // HHmmss
 )
 
 enum class Space(val folderName: String) {
     PUBLIC("Public"),
-    PRIVATE("Private")
+    PRIVATE("Private"),
 }
 
 enum class EntryType(val prefix: String) {
@@ -24,7 +24,8 @@ enum class EntryType(val prefix: String) {
     PHOTO("拍照"),
     VIDEO("视频"),
     FILE("文件"),
-    UNKNOWN("未知");
+    UNKNOWN("未知"),
+    ;
 
     companion object {
         fun fromFileName(name: String): EntryType {

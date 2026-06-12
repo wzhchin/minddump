@@ -10,51 +10,58 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.storage.Space
+import com.chin.minddump.R
 
 @Composable
 fun SpaceSwitchButton(
     currentSpace: Space,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val containerColor by animateColorAsState(
-        targetValue = when (currentSpace) {
-            Space.PUBLIC -> MaterialTheme.colorScheme.primaryContainer
-            Space.PRIVATE -> MaterialTheme.colorScheme.errorContainer
-        },
+        targetValue =
+            when (currentSpace) {
+                Space.PUBLIC -> MaterialTheme.colorScheme.primaryContainer
+                Space.PRIVATE -> MaterialTheme.colorScheme.errorContainer
+            },
         animationSpec = tween(300),
-        label = "space_color"
+        label = "space_color",
     )
 
     val contentColor by animateColorAsState(
-        targetValue = when (currentSpace) {
-            Space.PUBLIC -> MaterialTheme.colorScheme.onPrimaryContainer
-            Space.PRIVATE -> MaterialTheme.colorScheme.onErrorContainer
-        },
+        targetValue =
+            when (currentSpace) {
+                Space.PUBLIC -> MaterialTheme.colorScheme.onPrimaryContainer
+                Space.PRIVATE -> MaterialTheme.colorScheme.onErrorContainer
+            },
         animationSpec = tween(300),
-        label = "space_content_color"
+        label = "space_content_color",
     )
 
     FilledTonalIconButton(
         onClick = onClick,
         modifier = modifier,
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = containerColor,
-            contentColor = contentColor
-        )
+        colors =
+            IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = containerColor,
+                contentColor = contentColor,
+            ),
     ) {
         Icon(
-            imageVector = when (currentSpace) {
-                Space.PUBLIC -> Icons.Filled.Public
-                Space.PRIVATE -> Icons.Filled.Lock
-            },
-            contentDescription = when (currentSpace) {
-                Space.PUBLIC -> "切换到 Private"
-                Space.PRIVATE -> "切换到 Public"
-            },
-            modifier = Modifier.size(18.dp)
+            imageVector =
+                when (currentSpace) {
+                    Space.PUBLIC -> Icons.Filled.Public
+                    Space.PRIVATE -> Icons.Filled.Lock
+                },
+            contentDescription =
+                when (currentSpace) {
+                    Space.PUBLIC -> stringResource(R.string.switch_to_private)
+                    Space.PRIVATE -> stringResource(R.string.switch_to_public)
+                },
+            modifier = Modifier.size(18.dp),
         )
     }
 }

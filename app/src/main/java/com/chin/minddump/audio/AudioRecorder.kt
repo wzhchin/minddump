@@ -9,19 +9,23 @@ import java.io.File
  * Wrapper around MediaRecorder for M4A/AAC recording.
  */
 class AudioRecorder {
-
     private var recorder: MediaRecorder? = null
     private var outputFile: File? = null
 
-    fun start(context: Context, outputFile: File) {
+    fun start(
+        context: Context,
+        outputFile: File,
+    ) {
         this.outputFile = outputFile
 
-        recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            MediaRecorder(context)
-        } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
-        }.apply {
+        val mr =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(context)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+        mr.apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -31,6 +35,7 @@ class AudioRecorder {
             prepare()
             start()
         }
+        recorder = mr
     }
 
     fun stop() {
