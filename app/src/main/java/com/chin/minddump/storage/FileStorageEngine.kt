@@ -105,7 +105,7 @@ class FileStorageEngine(private val context: Context) {
     }
 
     /**
-     * Scan all entries for a given space, sorted by date (newest first) then time (newest first).
+     * Scan all entries for a given space, sorted by lastModified (newest first).
      */
     fun scanEntries(space: Space): List<MindDumpEntry> {
         val spaceDir = File(getRootDir(), space.folderName)
@@ -115,12 +115,10 @@ class FileStorageEngine(private val context: Context) {
 
         spaceDir.listFiles()
             ?.filter { it.isDirectory }
-            ?.sortedByDescending { it.name }
-           ?.forEach { dateDir ->
+            ?.forEach { dateDir ->
                 val dateFolder = dateDir.name
                 dateDir.listFiles()
                     ?.filter { it.isFile }
-                    ?.sortedByDescending { it.name }
                     ?.forEach { file ->
                         val type = EntryType.fromFileName(file.name)
                         entries.add(
@@ -135,7 +133,7 @@ class FileStorageEngine(private val context: Context) {
                     }
             }
 
-        return entries
+        return entries.sortedByDescending { it.file.lastModified() }
     }
 
     /**
