@@ -9,12 +9,20 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -22,7 +30,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -31,7 +45,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -48,6 +64,8 @@ import com.chin.minddump.ui.components.MigrationDialog
 import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.SettingsDialog
+import com.chin.minddump.ui.theme.LocalAnimationDuration
+import kotlinx.coroutines.launch
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,8 +78,25 @@ fun MainScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val animDuration = LocalAnimationDuration.current
+    val scope = rememberCoroutineScope()
 
     var entryToDelete by remember { mutableStateOf<MindDumpEntry?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Search bar expanded state
+    var searchExpanded by remember { mutableStateOf(false) }
+
+    // App bar background color animation
+    val appBarContainerColor by animateColorAsState(
+        targetValue = if (searchExpanded) {
+            MaterialTheme.colorScheme.surfaceContainer
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(animDuration.short),
+        label = "appbar_bg",
+    )
 
     // --- Launchers ---
     val storagePermissionLauncher =
@@ -111,31 +146,103 @@ fun MainScreen(
     MindDumpTheme(darkTheme = uiState.isDarkTheme) {
         NiaBackground {
             Scaffold(
+                snackbarHost = {
+                    SnackbarHost(hostState = snackbarHostState) { data ->
+                        Snackbar(
+                            snackbarData = data,
+                            actionColor = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                },
                 topBar = {
                     CenterAlignedTopAppBar(
                         title = {
-                            val spaceTitle = when (uiState.currentSpace) {
-                                Space.PUBLIC -> stringResource(R.string.space_public)
-                                Space.PRIVATE -> stringResource(R.string.space_private)
-                            }
-                            Text(
-                                text = spaceTitle,
-                                style = MaterialTheme.typography.titleLarge,
-                            )
-                        },
-                        actions = {
-                            IconButton(onClick = { viewModel.setShowSettings(true) }) {
-                                Icon(
-                                    Icons.Filled.Settings,
-                                    contentDescription = stringResource(R.string.settings),
-                                    tint = LocalTintTheme.current.iconTint
-                                        .takeIf { it != Color.Unspecified }
-                                        ?: MaterialTheme.colorScheme.onSurface,
+                            AnimatedVisibility(
+                                visible = !searchExpanded,
+                                enter = fadeIn(tween(animDuration.short)),
+                                exit = fadeOut(tween(animDuration.short)),
+                            ) {
+                                val spaceTitle = when (uiState.currentSpace) {
+                                    Space.PUBLIC -> stringResource(R.string.space_public)
+                                    Space.PRIVATE -> stringResource(R.string.space_private)
+                                }
+                                Text(
+                                    text = spaceTitle,
+                                    style = MaterialTheme.typography.titleLarge,
                                 )
                             }
                         },
+                        actions = {
+                            // Search icon / search field
+                            AnimatedVisibility(
+                                visible = searchExpanded,
+                                enter = expandHorizontally(
+                                    expandFrom = Alignment.Start,
+                                    animationSpec = tween(animDuration.medium),
+                                ) + fadeIn(tween(animDuration.medium)),
+                                exit = shrinkHorizontally(
+                                    shrinkTowards = Alignment.End,
+                                    animationSpec = tween(animDuration.medium),
+                                ) + fadeOut(tween(animDuration.medium)),
+                            ) {
+                                OutlinedTextField(
+                                    value = uiState.searchQuery,
+                                    onValueChange = { viewModel.updateSearchQuery(it) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(end = 8.dp),
+                                    placeholder = { Text(stringResource(R.string.search_placeholder)) },
+                                    singleLine = true,
+                                    shape = MaterialTheme.shapes.extraLarge,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent,
+                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    ),
+                                    trailingIcon = {
+                                        if (uiState.searchQuery.isNotEmpty()) {
+                                            IconButton(onClick = {
+                                                viewModel.clearSearch()
+                                                searchExpanded = false
+                                            }) {
+                                                Icon(
+                                                    Icons.Filled.Search,
+                                                    contentDescription = stringResource(R.string.cancel),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+
+                            if (!searchExpanded) {
+                                IconButton(onClick = { searchExpanded = true }) {
+                                    Icon(
+                                        Icons.Filled.Search,
+                                        contentDescription = stringResource(R.string.search_placeholder),
+                                        tint = LocalTintTheme.current.iconTint
+                                            .takeIf { it != Color.Unspecified }
+                                            ?: MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+
+                            if (!searchExpanded) {
+                                IconButton(onClick = { viewModel.setShowSettings(true) }) {
+                                    Icon(
+                                        Icons.Filled.Settings,
+                                        contentDescription = stringResource(R.string.settings),
+                                        tint = LocalTintTheme.current.iconTint
+                                            .takeIf { it != Color.Unspecified }
+                                            ?: MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+                        },
                         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                            containerColor = Color.Transparent,
+                            containerColor = appBarContainerColor,
                         ),
                     )
                 },
@@ -169,15 +276,6 @@ fun MainScreen(
                 Column(
                     modifier = Modifier.fillMaxSize().padding(paddingValues),
                 ) {
-                    // Search bar
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = { viewModel.updateSearchQuery(it) },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        placeholder = { Text(stringResource(R.string.search_placeholder)) },
-                        singleLine = true,
-                        shape = MaterialTheme.shapes.extraLarge,
-                    )
                     // Entry list
                     Box(modifier = Modifier.fillMaxSize()) {
                         EntryList(
@@ -194,7 +292,21 @@ fun MainScreen(
             entryToDelete?.let { entry ->
                 DeleteConfirmDialog(
                     entry = entry,
-                    onConfirm = { viewModel.deleteEntry(entry); entryToDelete = null },
+                    onConfirm = {
+                        viewModel.deleteEntry(entry)
+                        entryToDelete = null
+                        // Show undo snackbar
+                        scope.launch {
+                            val result = snackbarHostState.showSnackbar(
+                                message = context.getString(R.string.delete_confirm),
+                                actionLabel = context.getString(R.string.cancel),
+                                duration = SnackbarDuration.Short,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                // Note: undo is a future enhancement — entry is already deleted
+                            }
+                        }
+                    },
                     onDismiss = { entryToDelete = null },
                 )
             }
