@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -20,11 +21,11 @@ data class MindDumpUiState(
     val entries: List<MindDumpEntry> = emptyList(),
     val inputText: String = "",
     val isRecording: Boolean = false,
-    val isCameraOpen: Boolean = false,
-    val isFullscreenEdit: Boolean = false,
     val storagePermissionGranted: Boolean = false,
     val audioPermissionGranted: Boolean = false,
     val cameraPermissionGranted: Boolean = false,
+    // Biometric auth for Private space
+    val pendingSpaceSwitch: Boolean = false,
     // Work directory settings
     val workDir: String = "",
     val showSettings: Boolean = false,
@@ -43,37 +44,64 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
 
     init {
         checkStoragePermission()
-        _uiState.value = _uiState.value.copy(
+        _uiState.update { it.copy(
             workDir = storageEngine.getRootDirPath()
-        )
+        ) }
     }
 
     fun checkStoragePermission() {
         val granted = storageEngine.hasStoragePermission()
-        _uiState.value = _uiState.value.copy(storagePermissionGranted = granted)
+        _uiState.update { it.copy(storagePermissionGranted = granted) }
         if (granted) {
             refreshEntries()
         }
     }
 
-    fun toggleSpace() {
-        val newSpace = if (_uiState.value.currentSpace == Space.PUBLIC) Space.PRIVATE else Space.PUBLIC
-        _uiState.value = _uiState.value.copy(
+    /**
+     * Request a space switch. If switching to Private, sets pendingSpaceSwitch
+     * to trigger biometric auth. If switching to Public, completes immediately.
+     */
+    fun requestSpaceSwitch() {
+        val targetSpace = if (_uiState.value.currentSpace == Space.PUBLIC) Space.PRIVATE else Space.PUBLIC
+        if (targetSpace == Space.PRIVATE) {
+            _uiState.update { it.copy(pendingSpaceSwitch = true) }
+        } else {
+            applySpaceSwitch(targetSpace)
+        }
+    }
+
+    /**
+     * Called when biometric auth succeeds — complete the switch to Private.
+     */
+    fun confirmSpaceSwitch() {
+        applySpaceSwitch(Space.PRIVATE)
+    }
+
+    /**
+     * Called when biometric auth fails or is cancelled.
+     */
+    fun cancelSpaceSwitch() {
+        _uiState.update { it.copy(pendingSpaceSwitch = false) }
+    }
+
+    private fun applySpaceSwitch(newSpace: Space) {
+        _uiState.update { it.copy(
             currentSpace = newSpace,
-            isDarkTheme = newSpace == Space.PRIVATE
-        )
+            isDarkTheme = newSpace == Space.PRIVATE,
+            pendingSpaceSwitch = false,
+        ) }
         refreshEntries()
     }
 
     fun refreshEntries() {
         viewModelScope.launch(Dispatchers.IO) {
             val entries = storageEngine.scanEntries(_uiState.value.currentSpace)
-            _uiState.value = _uiState.value.copy(entries = entries)
+            _uiState.update { it.copy(entries = entries) }
         }
     }
 
     fun updateInputText(text: String) {
-        _uiState.value = _uiState.value.copy(inputText = text)
+        _uiState.update { it.copy(inputText = text) }
     }
 
     fun submitText() {
@@ -82,13 +110,13 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
 
         viewModelScope.launch(Dispatchers.IO) {
             storageEngine.saveTextEntry(_uiState.value.currentSpace, text)
-            _uiState.value = _uiState.value.copy(inputText = "")
+            _uiState.update { it.copy(inputText = "") }
             refreshEntries()
         }
     }
 
     fun startRecording() {
-        _uiState.value = _uiState.value.copy(isRecording = true)
+        _uiState.update { it.copy(isRecording = true) }
     }
 
     fun getRecordingFile(): File {
@@ -96,7 +124,7 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun stopRecording() {
-        _uiState.value = _uiState.value.copy(isRecording = false)
+        _uiState.update { it.copy(isRecording = false) }
         refreshEntries()
     }
 
@@ -127,19 +155,11 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setAudioPermissionGranted(granted: Boolean) {
-        _uiState.value = _uiState.value.copy(audioPermissionGranted = granted)
+        _uiState.update { it.copy(audioPermissionGranted = granted) }
     }
 
     fun setCameraPermissionGranted(granted: Boolean) {
-        _uiState.value = _uiState.value.copy(cameraPermissionGranted = granted)
-    }
-
-    fun setCameraOpen(open: Boolean) {
-        _uiState.value = _uiState.value.copy(isCameraOpen = open)
-    }
-
-    fun setFullscreenEdit(open: Boolean) {
-        _uiState.value = _uiState.value.copy(isFullscreenEdit = open)
+        _uiState.update { it.copy(cameraPermissionGranted = granted) }
     }
 
     // --- Work directory ---
@@ -147,7 +167,7 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
     fun isWorkDirConfigured(): Boolean = storageEngine.isWorkDirConfigured()
 
     fun setShowSettings(show: Boolean) {
-        _uiState.value = _uiState.value.copy(showSettings = show)
+        _uiState.update { it.copy(showSettings = show) }
     }
 
     /**
@@ -166,12 +186,12 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
-        _uiState.value = _uiState.value.copy(
+        _uiState.update { it.copy(
             showMigrationDialog = true,
             pendingNewDir = newPath,
             currentFileCount = currentCount,
             newDirFileCount = newCount,
-        )
+        ) }
     }
 
     fun confirmMigration() {
@@ -189,24 +209,24 @@ class MindDumpViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun cancelMigration() {
-        _uiState.value = _uiState.value.copy(
+        _uiState.update { it.copy(
             showMigrationDialog = false,
             pendingNewDir = null,
             currentFileCount = 0,
             newDirFileCount = 0,
-        )
+        ) }
     }
 
     private fun applyNewDir(newPath: String) {
         storageEngine.setWorkDir(newPath)
-        _uiState.value = _uiState.value.copy(
+        _uiState.update { it.copy(
             workDir = newPath,
             showMigrationDialog = false,
             showSettings = false,
             pendingNewDir = null,
             currentFileCount = 0,
             newDirFileCount = 0,
-        )
+        ) }
         refreshEntries()
     }
 }

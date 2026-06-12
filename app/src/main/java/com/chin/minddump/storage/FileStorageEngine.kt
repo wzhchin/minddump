@@ -5,9 +5,9 @@ import android.net.Uri
 import android.os.Environment
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 /**
  * Handles all file operations for MindDump.
@@ -19,9 +19,12 @@ class FileStorageEngine(private val context: Context) {
 
     companion object {
         private const val DEFAULT_ROOT_DIR = "MindDump"
-        private val DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        private val TIME_FORMAT = SimpleDateFormat("HHmmss", Locale.getDefault())
+        private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+        private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
     }
+
+    private fun todayDateStr(): String = LocalDate.now().format(DATE_FORMAT)
+    private fun nowTimestampStr(): String = LocalTime.now().format(TIME_FORMAT)
 
     /**
      * Get the current root directory.
@@ -58,7 +61,7 @@ class FileStorageEngine(private val context: Context) {
     }
 
     fun getTodayDir(space: Space): File {
-        return getSpaceDir(space, DATE_FORMAT.format(Date()))
+        return getSpaceDir(space, todayDateStr())
     }
 
     /**
@@ -84,7 +87,7 @@ class FileStorageEngine(private val context: Context) {
      */
     fun saveTextEntry(space: Space, content: String): File {
         val dir = ensureTodayDir(space)
-        val timestamp = TIME_FORMAT.format(Date())
+        val timestamp = nowTimestampStr()
         val file = File(dir, "文字_$timestamp.md")
         file.writeText(content)
         return file
@@ -95,7 +98,7 @@ class FileStorageEngine(private val context: Context) {
      */
     fun getRecordingFile(space: Space): File {
         val dir = ensureTodayDir(space)
-        val timestamp = TIME_FORMAT.format(Date())
+        val timestamp = nowTimestampStr()
         return File(dir, "录音_$timestamp.m4a")
     }
 
@@ -104,7 +107,7 @@ class FileStorageEngine(private val context: Context) {
      */
     fun getPhotoFile(space: Space): File {
         val dir = ensureTodayDir(space)
-        val timestamp = TIME_FORMAT.format(Date())
+        val timestamp = nowTimestampStr()
         return File(dir, "拍照_$timestamp.jpg")
     }
 
@@ -113,7 +116,7 @@ class FileStorageEngine(private val context: Context) {
      */
     fun getVideoFile(space: Space): File {
         val dir = ensureTodayDir(space)
-        val timestamp = TIME_FORMAT.format(Date())
+        val timestamp = nowTimestampStr()
         return File(dir, "视频_$timestamp.mp4")
     }
 
@@ -122,7 +125,7 @@ class FileStorageEngine(private val context: Context) {
      */
     fun importFile(space: Space, uri: Uri, originalFileName: String): File {
         val dir = ensureTodayDir(space)
-        val timestamp = TIME_FORMAT.format(Date())
+        val timestamp = nowTimestampStr()
         val destFile = File(dir, "文件_${timestamp}_$originalFileName")
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(destFile).use { output ->

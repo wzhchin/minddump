@@ -19,9 +19,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("release.keystore")
-            storePassword = "minddump123"
+            storePassword = System.getenv("MINDUMP_KEYSTORE_PASSWORD") ?: ""
             keyAlias = "minddump"
-            keyPassword = "minddump123"
+            keyPassword = System.getenv("MINDUMP_KEY_PASSWORD") ?: ""
         }
     }
 
@@ -77,4 +77,13 @@ dependencies {
 
     // Image loading
     implementation(libs.coil.compose)
+
+    // Biometric
+    implementation(libs.biometric)
+
+    // Testing
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.turbine)
+    testImplementation(libs.coroutines.test)
 }

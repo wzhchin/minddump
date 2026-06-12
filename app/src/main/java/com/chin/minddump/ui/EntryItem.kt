@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.produceState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,9 +30,10 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import coil.size.Scale
 import com.chin.minddump.storage.EntryType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.chin.minddump.storage.MindDumpEntry
-import java.text.SimpleDateFormat
-import java.util.Locale
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -120,11 +122,13 @@ private fun TextEntryContent(entry: MindDumpEntry) {
         Spacer(modifier = Modifier.width(16.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            val textContent = remember(entry.file) {
-                try {
-                    entry.file.readText().take(500)
-                } catch (_: Exception) {
-                    entry.file.name
+            val textContent by produceState(initialValue = entry.file.name, key1 = entry.file) {
+                value = withContext(Dispatchers.IO) {
+                    try {
+                        entry.file.readText().take(500)
+                    } catch (_: Exception) {
+                        entry.file.name
+                    }
                 }
             }
             Text(
@@ -263,9 +267,9 @@ private fun formatEntryMeta(entry: MindDumpEntry): String {
         else -> "${size / (1024 * 1024)} MB"
     }
     val timeStr = try {
-        val input = SimpleDateFormat("HHmmss", Locale.getDefault())
-        val output = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-        output.format(input.parse(entry.timestamp) ?: "")
+        val inputFormat = DateTimeFormatter.ofPattern("HHmmss")
+        val outputFormat = DateTimeFormatter.ofPattern("HH:mm:ss")
+        java.time.LocalTime.parse(entry.timestamp, inputFormat).format(outputFormat)
     } catch (_: Exception) {
         entry.timestamp
     }
