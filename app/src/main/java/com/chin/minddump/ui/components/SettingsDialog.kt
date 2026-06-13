@@ -13,6 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.chin.minddump.R
+import com.chin.minddump.ui.theme.HapticPattern
+import com.chin.minddump.ui.theme.LocalExpressiveShapes
+import com.chin.minddump.ui.theme.rememberPremiumHaptics
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -21,8 +24,12 @@ fun SettingsDialog(
     onChangeDir: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val haptics = rememberPremiumHaptics()
+    val shapes = LocalExpressiveShapes.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = shapes.cardMedium,
         title = { Text(stringResource(R.string.settings_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -47,7 +54,10 @@ fun SettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = {
+                haptics.perform(HapticPattern.Tick)
+                onDismiss()
+            }) {
                 Text(stringResource(R.string.done))
             }
         },

@@ -14,6 +14,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.camera.CameraManager
+import com.chin.minddump.ui.statistics.StatisticsScreen
 import com.chin.minddump.ui.theme.LocalAnimationDuration
 
 sealed class Screen(val route: String) {
@@ -22,6 +23,8 @@ sealed class Screen(val route: String) {
     data object Camera : Screen("camera")
 
     data object FullscreenEdit : Screen("fullscreen_edit")
+
+    data object Statistics : Screen("statistics")
 }
 
 @Composable
@@ -78,6 +81,7 @@ fun MindDumpNavGraph(
                 audioRecorder = audioRecorder,
                 onNavigateToCamera = { navController.navigate(Screen.Camera.route) },
                 onNavigateToFullscreenEdit = { navController.navigate(Screen.FullscreenEdit.route) },
+                onNavigateToStatistics = { navController.navigate(Screen.Statistics.route) },
             )
         }
 
@@ -110,6 +114,12 @@ fun MindDumpNavGraph(
                     viewModel.submitText()
                     navController.popBackStack()
                 },
+            )
+        }
+
+        composable(Screen.Statistics.route) {
+            StatisticsScreen(
+                onBack = { navController.popBackStack() },
             )
         }
     }

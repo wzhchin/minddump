@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubbleOutline
@@ -34,6 +35,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import com.chin.minddump.ui.theme.LocalExpressiveShapes
 
 // ──────────────────────────────────────────────
 // 7.1 Entry Skeleton Card
@@ -50,7 +52,7 @@ fun EntrySkeletonCard(
 ) {
     val shimmerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
     val shimmerMidColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
-    val shape = RoundedCornerShape(16.dp)
+    val shape = LocalExpressiveShapes.current.entryCard
 
     val infiniteTransition = rememberInfiniteTransition(label = "skeleton_shimmer")
     val progress by infiniteTransition.animateFloat(
@@ -81,27 +83,54 @@ fun EntrySkeletonCard(
                 drawRect(brush = brush)
             },
     ) {
-        if (isPhotoVariant) {
-            // Photo placeholder: gray rectangle for image area
+        // Header row skeleton: avatar circle + timestamp line
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Avatar placeholder
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            // Timestamp placeholder
+            Box(
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(4.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-        ) {
-            // Text line placeholder
-            Column(modifier = Modifier.weight(1f)) {
+        if (isPhotoVariant) {
+            // Photo placeholder: image area
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(bottom = 8.dp)
+                    .height(180.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        } else {
+            // Text placeholder lines
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 12.dp),
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.9f)
-                        .height(16.dp)
+                        .height(14.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 )
@@ -109,25 +138,15 @@ fun EntrySkeletonCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.7f)
-                        .height(16.dp)
+                        .height(14.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 )
-                if (!isPhotoVariant) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.5f)
-                            .height(16.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
-                        .width(80.dp)
-                        .height(10.dp)
+                        .fillMaxWidth(0.4f)
+                        .height(14.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 )

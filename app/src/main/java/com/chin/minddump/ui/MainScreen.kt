@@ -18,10 +18,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -64,7 +66,10 @@ import com.chin.minddump.ui.components.MigrationDialog
 import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.SettingsDialog
+import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
+import com.chin.minddump.ui.theme.LocalExpressiveShapes
+import com.chin.minddump.ui.theme.rememberPremiumHaptics
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -75,10 +80,13 @@ fun MainScreen(
     audioRecorder: AudioRecorder,
     onNavigateToCamera: () -> Unit = {},
     onNavigateToFullscreenEdit: () -> Unit = {},
+    onNavigateToStatistics: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val animDuration = LocalAnimationDuration.current
+    val shapes = LocalExpressiveShapes.current
+    val haptics = rememberPremiumHaptics()
     val scope = rememberCoroutineScope()
 
     var entryToDelete by remember { mutableStateOf<MindDumpEntry?>(null) }
@@ -157,23 +165,7 @@ fun MainScreen(
                 topBar = {
                     CenterAlignedTopAppBar(
                         title = {
-                            AnimatedVisibility(
-                                visible = !searchExpanded,
-                                enter = fadeIn(tween(animDuration.short)),
-                                exit = fadeOut(tween(animDuration.short)),
-                            ) {
-                                val spaceTitle = when (uiState.currentSpace) {
-                                    Space.PUBLIC -> stringResource(R.string.space_public)
-                                    Space.PRIVATE -> stringResource(R.string.space_private)
-                                }
-                                Text(
-                                    text = spaceTitle,
-                                    style = MaterialTheme.typography.titleLarge,
-                                )
-                            }
-                        },
-                        actions = {
-                            // Search icon / search field
+                            // Search field when expanded
                             AnimatedVisibility(
                                 visible = searchExpanded,
                                 enter = expandHorizontally(
@@ -193,7 +185,7 @@ fun MainScreen(
                                         .padding(end = 8.dp),
                                     placeholder = { Text(stringResource(R.string.search_placeholder)) },
                                     singleLine = true,
-                                    shape = MaterialTheme.shapes.extraLarge,
+                                    shape = shapes.inputField,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = Color.Transparent,
                                         unfocusedBorderColor = Color.Transparent,
@@ -216,9 +208,14 @@ fun MainScreen(
                                     },
                                 )
                             }
-
+                        },
+                        actions = {
                             if (!searchExpanded) {
-                                IconButton(onClick = { searchExpanded = true }) {
+                                // Search
+                                IconButton(onClick = {
+                                    haptics.perform(HapticPattern.Tick)
+                                    searchExpanded = true
+                                }) {
                                     Icon(
                                         Icons.Filled.Search,
                                         contentDescription = stringResource(R.string.search_placeholder),
@@ -227,10 +224,24 @@ fun MainScreen(
                                             ?: MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
-                            }
-
-                            if (!searchExpanded) {
-                                IconButton(onClick = { viewModel.setShowSettings(true) }) {
+                                // Statistics
+                                IconButton(onClick = {
+                                    haptics.perform(HapticPattern.Tick)
+                                    onNavigateToStatistics()
+                                }) {
+                                    Icon(
+                                        Icons.Filled.BarChart,
+                                        contentDescription = "统计",
+                                        tint = LocalTintTheme.current.iconTint
+                                            .takeIf { it != Color.Unspecified }
+                                            ?: MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                                // Settings
+                                IconButton(onClick = {
+                                    haptics.perform(HapticPattern.Tick)
+                                    viewModel.setShowSettings(true)
+                                }) {
                                     Icon(
                                         Icons.Filled.Settings,
                                         contentDescription = stringResource(R.string.settings),

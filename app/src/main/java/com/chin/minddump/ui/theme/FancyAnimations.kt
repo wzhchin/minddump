@@ -15,6 +15,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 
 // ──────────────────────────────────────────────
 // 2.1 Press Scale Animation
@@ -44,7 +46,7 @@ import androidx.compose.ui.graphics.graphicsLayer
  * @param showElevation whether to animate shadow elevation on press
  */
 fun Modifier.animatePressScale(
-    pressedScale: Float = 0.97f,
+    pressedScale: Float = 0.92f,
     showElevation: Boolean = true,
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
@@ -238,4 +240,49 @@ fun SwipeDismissItem(
     ) {
         content()
     }
+}
+
+// ──────────────────────────────────────────────
+// 2.6 No-Ripple Clickable
+// ──────────────────────────────────────────────
+
+/**
+ * Clickable modifier without Material ripple indication.
+ * Combines press scale animation with optional haptic feedback
+ * for a cleaner, more premium touch experience.
+ *
+ * @param onClick callback when clicked
+ * @param onPress optional haptic to perform on press (before click)
+ * @param role accessibility role
+ */
+fun Modifier.noRippleClickable(
+    onClick: () -> Unit,
+    onPress: (() -> Unit)? = null,
+    role: Role? = null,
+): Modifier = composed {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Trigger haptic on press
+    if (isPressed) {
+        onPress?.invoke()
+    }
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
+        label = "no_ripple_scale",
+    )
+
+    this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null, // No ripple
+            role = role,
+            onClick = onClick,
+        )
 }

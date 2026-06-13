@@ -255,6 +255,20 @@ class MindDumpRepository
 
         fun countFilesIn(dir: File): Int = storageEngine.countFilesIn(dir)
 
+        // --- Statistics delegation ---
+
+        fun getEntryCountByDay(space: Space, limit: Int = 90): Flow<List<DayCount>> =
+            dao.getEntryCountByDay(space, limit)
+
+        fun getEntryCountByType(space: Space): Flow<List<TypeCount>> =
+            dao.getEntryCountByType(space)
+
+        fun getHourlyDistribution(space: Space): Flow<List<HourCount>> =
+            dao.getHourlyDistribution(space)
+
+        fun countFlow(space: Space): Flow<Int> =
+            dao.countFlow(space)
+
         suspend fun migrateTo(newRoot: File) =
             withContext(Dispatchers.IO) {
                 storageEngine.migrateTo(newRoot)

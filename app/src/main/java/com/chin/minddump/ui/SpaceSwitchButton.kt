@@ -17,7 +17,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.storage.Space
+import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
+import com.chin.minddump.ui.theme.rememberPremiumHaptics
 import com.chin.minddump.R
 
 @Composable
@@ -28,6 +30,7 @@ fun SpaceSwitchButton(
     modifier: Modifier = Modifier,
 ) {
     val animDuration = LocalAnimationDuration.current.medium
+    val haptics = rememberPremiumHaptics()
 
     val containerColor by animateColorAsState(
         targetValue = when (currentSpace) {
@@ -48,7 +51,10 @@ fun SpaceSwitchButton(
     )
 
     FilledTonalIconButton(
-        onClick = onClick,
+        onClick = {
+            haptics.perform(HapticPattern.Pop)
+            onClick()
+        },
         modifier = modifier.graphicsLayer {
             this.rotationY = rotationY
             this.cameraDistance = 12f * density

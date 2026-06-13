@@ -9,6 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.R
+import com.chin.minddump.ui.theme.HapticPattern
+import com.chin.minddump.ui.theme.LocalExpressiveShapes
+import com.chin.minddump.ui.theme.rememberPremiumHaptics
 
 @Composable
 fun MigrationDialog(
@@ -18,8 +21,12 @@ fun MigrationDialog(
     onSkip: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    val haptics = rememberPremiumHaptics()
+    val shapes = LocalExpressiveShapes.current
+
     AlertDialog(
         onDismissRequest = onCancel,
+        shape = shapes.cardMedium,
         title = { Text(stringResource(R.string.migration_title)) },
         text = {
             val lines = mutableListOf<String>()
@@ -33,16 +40,25 @@ fun MigrationDialog(
             Text(lines.joinToString("\n"))
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(onClick = {
+                haptics.perform(HapticPattern.Tick)
+                onConfirm()
+            }) {
                 Text(stringResource(R.string.move))
             }
         },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onCancel) {
+                TextButton(onClick = {
+                    haptics.perform(HapticPattern.Cancel)
+                    onCancel()
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
-                TextButton(onClick = onSkip) {
+                TextButton(onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    onSkip()
+                }) {
                     Text(stringResource(R.string.skip))
                 }
             }

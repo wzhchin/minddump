@@ -15,6 +15,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.R
+import com.chin.minddump.ui.theme.HapticPattern
+import com.chin.minddump.ui.theme.LocalExpressiveShapes
+import com.chin.minddump.ui.theme.rememberPremiumHaptics
 
 @Composable
 fun PasswordSetupDialog(
@@ -24,12 +27,15 @@ fun PasswordSetupDialog(
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val haptics = rememberPremiumHaptics()
+    val shapes = LocalExpressiveShapes.current
 
     val passwordTooShort = stringResource(R.string.password_too_short)
     val passwordMismatch = stringResource(R.string.password_mismatch)
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = shapes.cardMedium,
         title = { Text(stringResource(R.string.password_setup_title)) },
         text = {
             Column(
@@ -70,9 +76,18 @@ fun PasswordSetupDialog(
             TextButton(
                 onClick = {
                     when {
-                        password.length < 4 -> error = passwordTooShort
-                        password != confirmPassword -> error = passwordMismatch
-                        else -> onConfirm(password)
+                        password.length < 4 -> {
+                            haptics.perform(HapticPattern.Error)
+                            error = passwordTooShort
+                        }
+                        password != confirmPassword -> {
+                            haptics.perform(HapticPattern.Error)
+                            error = passwordMismatch
+                        }
+                        else -> {
+                            haptics.perform(HapticPattern.Success)
+                            onConfirm(password)
+                        }
                     }
                 },
             ) {
@@ -80,7 +95,10 @@ fun PasswordSetupDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = {
+                haptics.perform(HapticPattern.Cancel)
+                onDismiss()
+            }) {
                 Text(stringResource(R.string.cancel))
             }
         },

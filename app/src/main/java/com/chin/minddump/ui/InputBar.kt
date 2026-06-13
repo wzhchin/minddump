@@ -60,8 +60,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.storage.Space
+import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
+import com.chin.minddump.ui.theme.LocalExpressiveShapes
 import com.chin.minddump.ui.theme.LocalMotionCurve
+import com.chin.minddump.ui.theme.rememberPremiumHaptics
 import com.chin.minddump.R
 
 /**
@@ -105,6 +108,8 @@ fun InputBar(
     val backgroundTheme = LocalBackgroundTheme.current
     val animDuration = LocalAnimationDuration.current
     val curve = LocalMotionCurve.current
+    val shapes = LocalExpressiveShapes.current
+    val haptics = rememberPremiumHaptics()
 
     // Transition-driven colors
     val recordContainerColor by animateColorAsState(
@@ -169,7 +174,10 @@ fun InputBar(
             ) {
                 // Recording button with transition-driven colors
                 FilledTonalIconButton(
-                    onClick = onRecordClick,
+                    onClick = {
+                        haptics.perform(HapticPattern.Pop)
+                        onRecordClick()
+                    },
                     colors = IconButtonDefaults.filledTonalIconButtonColors(
                         containerColor = recordContainerColor,
                         contentColor = recordContentColor,
@@ -204,7 +212,10 @@ fun InputBar(
                     exit = fadeOut(tween(animDuration.short)) + shrinkVertically(),
                 ) {
                     FilledTonalIconButton(
-                        onClick = onCameraClick,
+                        onClick = {
+                            haptics.perform(HapticPattern.Tick)
+                            onCameraClick()
+                        },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -224,7 +235,10 @@ fun InputBar(
                     exit = fadeOut(tween(animDuration.short)) + shrinkVertically(),
                 ) {
                     FilledTonalIconButton(
-                        onClick = onImportClick,
+                        onClick = {
+                            haptics.perform(HapticPattern.Tick)
+                            onImportClick()
+                        },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -274,7 +288,7 @@ fun InputBar(
                     maxLines = 4,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSubmit() }),
-                    shape = MaterialTheme.shapes.extraLarge,
+                    shape = shapes.inputField,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
@@ -290,7 +304,10 @@ fun InputBar(
                     exit = fadeOut(tween(animDuration.short)) + shrinkVertically(),
                 ) {
                     FilledTonalIconButton(
-                        onClick = onFullscreenClick,
+                        onClick = {
+                            haptics.perform(HapticPattern.Tick)
+                            onFullscreenClick()
+                        },
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -306,7 +323,10 @@ fun InputBar(
 
                 // Send button with bounce animation
                 FilledIconButton(
-                    onClick = onSubmit,
+                    onClick = {
+                        haptics.perform(HapticPattern.Send)
+                        onSubmit()
+                    },
                     enabled = inputText.isNotBlank(),
                     modifier = Modifier.graphicsLayer {
                         scaleX = sendScaleAnimated

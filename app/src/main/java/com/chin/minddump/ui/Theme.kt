@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LocalAbsoluteTonalElevation
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -23,18 +22,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import com.chin.minddump.ui.theme.ExpressiveShapes
 import com.chin.minddump.ui.theme.GradientColors
 import com.chin.minddump.ui.theme.LocalAnimationDuration
+import com.chin.minddump.ui.theme.LocalExpressiveShapes
 import com.chin.minddump.ui.theme.LocalGradientColors
 import com.chin.minddump.ui.theme.LocalMotionCurve
+import com.chin.minddump.ui.theme.createTypography
 import com.chin.minddump.ui.theme.isReduceMotionEnabled
 import com.chin.minddump.ui.theme.rememberAnimationDuration
 import com.chin.minddump.ui.theme.rememberMotionCurve
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 
 // ──────────────────────────────────────────────
@@ -146,74 +144,10 @@ data class TintTheme(
 val LocalTintTheme = staticCompositionLocalOf { TintTheme() }
 
 // ──────────────────────────────────────────────
-// Typography (only styles actually used)
+// Typography (from Type.kt — Google Sans Flex M3 Expressive)
 // ──────────────────────────────────────────────
 
-private val AppTypography =
-    Typography(
-        titleLarge =
-            TextStyle(
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
-                lineHeight = 28.sp,
-                letterSpacing = 0.sp,
-                lineHeightStyle =
-                    LineHeightStyle(
-                        alignment = LineHeightStyle.Alignment.Bottom,
-                        trim = LineHeightStyle.Trim.LastLineBottom,
-                    ),
-            ),
-        titleMedium =
-            TextStyle(
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                lineHeight = 24.sp,
-                letterSpacing = 0.1.sp,
-            ),
-        bodyLarge =
-            TextStyle(
-                fontWeight = FontWeight.Normal,
-                fontSize = 16.sp,
-                lineHeight = 24.sp,
-                letterSpacing = 0.5.sp,
-                lineHeightStyle =
-                    LineHeightStyle(
-                        alignment = LineHeightStyle.Alignment.Center,
-                        trim = LineHeightStyle.Trim.None,
-                    ),
-            ),
-        bodySmall =
-            TextStyle(
-                fontWeight = FontWeight.Normal,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                letterSpacing = 0.4.sp,
-            ),
-        labelMedium =
-            TextStyle(
-                fontWeight = FontWeight.Medium,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                letterSpacing = 0.5.sp,
-                lineHeightStyle =
-                    LineHeightStyle(
-                        alignment = LineHeightStyle.Alignment.Center,
-                        trim = LineHeightStyle.Trim.LastLineBottom,
-                    ),
-            ),
-        labelSmall =
-            TextStyle(
-                fontWeight = FontWeight.Medium,
-                fontSize = 10.sp,
-                lineHeight = 14.sp,
-                letterSpacing = 0.sp,
-                lineHeightStyle =
-                    LineHeightStyle(
-                        alignment = LineHeightStyle.Alignment.Center,
-                        trim = LineHeightStyle.Trim.LastLineBottom,
-                    ),
-            ),
-    )
+private val AppTypography = createTypography()
 
 // ──────────────────────────────────────────────
 // Background component
@@ -300,6 +234,9 @@ fun MindDumpTheme(
         }
     }
 
+    // Shape tokens
+    val shapes = ExpressiveShapes()
+
     // Composition locals
     CompositionLocalProvider(
         LocalBackgroundTheme provides backgroundTheme,
@@ -307,6 +244,7 @@ fun MindDumpTheme(
         LocalGradientColors provides gradientColors,
         LocalAnimationDuration provides animationDuration,
         LocalMotionCurve provides motionCurve,
+        LocalExpressiveShapes provides shapes,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
