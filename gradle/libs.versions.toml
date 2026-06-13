@@ -9,7 +9,8 @@ lifecycle = "2.8.7"
 activity-compose = "1.9.3"
 navigation = "2.8.5"
 material3 = "1.3.1"
-coil = "2.7.0"
+coil = "3.0.4"
+image-viewer = "1.1.0-alpha.7"
 biometric = "1.1.0"
 junit = "4.13.2"
 mockk = "1.13.13"
@@ -44,7 +45,9 @@ camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", vers
 camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 camerax-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
 
-coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
+image-viewer = { group = "com.jvziyaoyao.scale", name = "image-viewer", version.ref = "image-viewer" }
 
 biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

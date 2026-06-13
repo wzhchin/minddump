@@ -1,21 +1,18 @@
 package com.chin.minddump.ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,13 +27,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -49,36 +46,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
-import coil.request.ImageRequest
-import coil.size.Scale
+import com.chin.minddump.R
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.MindDumpEntry
+import com.chin.minddump.ui.components.BubblePosition
+import com.chin.minddump.ui.components.BubbleRole
+import com.chin.minddump.ui.components.DocumentChip
+import com.chin.minddump.ui.components.GroupedMessageBubble
+import com.chin.minddump.ui.components.ZoomableAsyncImage
+import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
-import com.chin.minddump.ui.theme.LocalGradientColors
 import com.chin.minddump.ui.theme.LocalMotionCurve
-import com.chin.minddump.ui.theme.animatePressScale
-import com.chin.minddump.ui.theme.shimmerEffect
-import com.chin.minddump.R
+import com.chin.minddump.ui.theme.rememberPremiumHaptics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Duration
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalFoundationApi::class)
+// ──────────────────────────────────────────────
+// Entry List
+// ──────────────────────────────────────────────
+
 @Composable
 fun EntryList(
     entries: List<MindDumpEntry>,
@@ -101,8 +98,8 @@ fun EntryList(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         reverseLayout = true,
     ) {
         items(
@@ -140,6 +137,10 @@ fun EntryList(
     }
 }
 
+// ──────────────────────────────────────────────
+// Unified Entry Card
+// ──────────────────────────────────────────────
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EntryItem(
@@ -147,36 +148,86 @@ fun EntryItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+    val haptics = rememberPremiumHaptics()
+
+    GroupedMessageBubble(
+        position = BubblePosition.SINGLE,
+        role = BubbleRole.ASSISTANT,
         modifier = Modifier
             .fillMaxWidth()
-            .animatePressScale()
             .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick,
+                onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    onClick()
+                },
+                onLongClick = {
+                    haptics.perform(HapticPattern.Buildup)
+                    onLongClick()
+                },
             ),
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            when (entry.type) {
-                EntryType.PHOTO -> PhotoEntryContent(entry)
-                EntryType.TEXT -> TextEntryContent(entry)
-                EntryType.RECORDING -> AudioEntryContent(entry)
-                EntryType.VIDEO -> VideoEntryContent(entry)
-                else -> OtherEntryContent(entry)
-            }
+        // ── Header row: type icon avatar + timestamp ──
+        EntryCardHeader(entry)
 
-            // Lock icon for encrypted entries
+        // ── Content area per type ──
+        when (entry.type) {
+            EntryType.TEXT -> TextEntryContent(entry)
+            EntryType.PHOTO -> PhotoEntryContent(entry)
+            EntryType.RECORDING -> AudioEntryContent(entry)
+            EntryType.VIDEO -> VideoEntryContent(entry)
+            else -> FileEntryContent(entry)
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
+// Header: type icon avatar + relative timestamp
+// ──────────────────────────────────────────────
+
+@Composable
+private fun EntryCardHeader(entry: MindDumpEntry) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Circular type icon avatar
+        val typeIcon = entry.type.toIcon()
+        val typeColor = entry.type.toColor()
+
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(typeColor.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = typeIcon,
+                contentDescription = entry.type.name,
+                tint = typeColor,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Relative timestamp
+        Text(
+            text = formatRelativeTimestamp(entry.dateFolder, entry.timestamp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Lock icon for encrypted entries
+        if (entry.file.name.contains("enc") || entry.file.extension == "enc") {
             Icon(
                 imageVector = Icons.Filled.Lock,
                 contentDescription = null,
-                modifier = Modifier
-                    .size(16.dp)
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp),
+                modifier = Modifier.size(14.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
         }
@@ -184,242 +235,89 @@ fun EntryItem(
 }
 
 // ──────────────────────────────────────────────
-// Text entry: gradient accent bar on left
+// Text entry
 // ──────────────────────────────────────────────
 
 @Composable
 private fun TextEntryContent(entry: MindDumpEntry) {
-    val gradientColors = LocalGradientColors.current
-    val accentBrush = Brush.verticalGradient(
-        colors = listOf(
-            gradientColors.primaryGradient.first,
-            gradientColors.primaryGradient.second,
-        ),
-    )
+    val textContent by produceState(initialValue = entry.file.name, key1 = entry.file) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                entry.file.readText().take(500)
+            } catch (_: Exception) {
+                entry.file.name
+            }
+        }
+    }
 
-    Row(
+    var expanded by remember { mutableStateOf(false) }
+    val effectiveMaxLines = if (expanded) Int.MAX_VALUE else 3
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .drawBehind {
-                drawRoundRect(
-                    brush = accentBrush,
-                    cornerRadius = CornerRadius(2.dp.toPx()),
-                    topLeft = Offset.Zero,
-                    size = Size(4.dp.toPx(), size.height),
-                )
-            }
-            .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
-        verticalAlignment = Alignment.Top,
+            .padding(horizontal = 12.dp)
+            .padding(bottom = 12.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            val textContent by produceState(initialValue = entry.file.name, key1 = entry.file) {
-                value = withContext(Dispatchers.IO) {
-                    try {
-                        entry.file.readText().take(500)
-                    } catch (_: Exception) {
-                        entry.file.name
-                    }
-                }
-            }
+        Text(
+            text = textContent,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = effectiveMaxLines,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
 
-            var expanded by remember { mutableStateOf(false) }
-
-            val effectiveMaxLines = if (expanded) Int.MAX_VALUE else 3
-
+        if (!expanded && textContent.length > 120) {
             Text(
-                text = textContent,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = effectiveMaxLines,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface,
+                text = "展开",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 4.dp),
             )
-
-            // "展开" indicator if text exceeds 3 lines
-            if (!expanded && textContent.length > 120) {
-                Text(
-                    text = "展开",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = formatEntryMeta(entry),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }
 
 // ──────────────────────────────────────────────
-// Photo entry: image + gradient overlay
+// Photo entry: tap-to-zoom thumbnail
 // ──────────────────────────────────────────────
 
 @Composable
 private fun PhotoEntryContent(entry: MindDumpEntry) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        val context = LocalContext.current
-        var isLoading by remember { mutableStateOf(true) }
-        var isError by remember { mutableStateOf(false) }
-        val painter = rememberAsyncImagePainter(
-            model = ImageRequest.Builder(context)
-                .data(entry.file)
-                .size(600)
-                .scale(Scale.FILL)
-                .build(),
-            onState = { state ->
-                isLoading = state is AsyncImagePainter.State.Loading
-                isError = state is AsyncImagePainter.State.Error
-            },
+    val innerShape = RoundedCornerShape(12.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .padding(bottom = 8.dp)
+            .clip(innerShape)
+            .height(200.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        ZoomableAsyncImage(
+            model = entry.file,
+            contentDescription = stringResource(R.string.photo),
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
         )
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .shimmerEffect(),
-                )
-            }
-            Image(
-                painter = painter,
-                contentDescription = stringResource(R.string.photo),
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                alpha = if (isError) 0f else 1f,
-            )
-
-            // Bottom gradient overlay
-            val overlayBrush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                ),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .align(Alignment.BottomCenter)
-                    .drawBehind {
-                        drawRect(brush = overlayBrush)
-                    },
-            )
-        }
-
-        // Content area
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.PhotoCamera,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = formatEntryMeta(entry),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
 // ──────────────────────────────────────────────
-// Audio entry: waveform bars + pulse indicator
+// Audio entry: document chip
 // ──────────────────────────────────────────────
 
 @Composable
 private fun AudioEntryContent(entry: MindDumpEntry) {
-    Row(
+    DocumentChip(
+        fileName = entry.file.name,
+        mimeType = "audio/mp4",
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Waveform decoration bars
-        WaveformBars(
-            barCount = 5,
-            barWidth = 3.dp,
-            maxHeight = 24.dp,
-            color = MaterialTheme.colorScheme.primary,
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = entry.file.name,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = formatEntryMeta(entry),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/**
- * Animated waveform bars decoration for audio entries.
- */
-@Composable
-private fun WaveformBars(
-    barCount: Int = 5,
-    barWidth: Dp = 3.dp,
-    maxHeight: Dp = 24.dp,
-    color: Color,
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "waveform")
-    val animDuration = LocalAnimationDuration.current
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        for (i in 0 until barCount) {
-            val heightFraction by infiniteTransition.animateFloat(
-                initialValue = 0.3f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(
-                        durationMillis = 600 + i * 100,
-                        easing = { it },
-                    ),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-                label = "waveform_bar_$i",
-            )
-            Box(
-                modifier = Modifier
-                    .size(width = barWidth, height = maxHeight * heightFraction)
-                    .clip(RoundedCornerShape(1.dp))
-                    .drawBehind {
-                        drawRect(color = color)
-                    },
-            )
-        }
-    }
+            .padding(horizontal = 8.dp)
+            .padding(bottom = 8.dp),
+    )
 }
 
 // ──────────────────────────────────────────────
@@ -428,164 +326,127 @@ private fun WaveformBars(
 
 @Composable
 private fun VideoEntryContent(entry: MindDumpEntry) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        val context = LocalContext.current
-        var isLoading by remember { mutableStateOf(true) }
-        var isError by remember { mutableStateOf(false) }
-        val painter = rememberAsyncImagePainter(
-            model = ImageRequest.Builder(context)
-                .data(entry.file)
-                .size(600)
-                .scale(Scale.FILL)
-                .build(),
-            onState = { state ->
-                isLoading = state is AsyncImagePainter.State.Loading
-                isError = state is AsyncImagePainter.State.Error
-            },
+    val innerShape = RoundedCornerShape(12.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .padding(bottom = 8.dp)
+            .clip(innerShape)
+            .height(200.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        ZoomableAsyncImage(
+            model = entry.file,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
         )
 
+        // Play button overlay
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
             contentAlignment = Alignment.Center,
         ) {
-            if (isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .shimmerEffect(),
-                )
-            }
-            Image(
-                painter = painter,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                alpha = if (isError) 0f else 1f,
-            )
-
-            // Play button overlay
-            val playBgColor = MaterialTheme.colorScheme.surface
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .graphicsLayer { alpha = 0.7f }
-                    .drawBehind {
-                        drawRect(color = playBgColor)
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-
-            // Bottom gradient + duration badge
-            val videoOverlayBrush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                ),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .align(Alignment.BottomCenter)
-                    .drawBehind {
-                        drawRect(brush = videoOverlayBrush)
-                    },
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
             Icon(
-                imageVector = Icons.Filled.Videocam,
+                imageVector = Icons.Filled.PlayArrow,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = formatEntryMeta(entry),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(28.dp),
             )
         }
     }
 }
 
 // ──────────────────────────────────────────────
-// Other / fallback entry
+// File entry: file name + icon
 // ──────────────────────────────────────────────
 
 @Composable
-private fun OtherEntryContent(entry: MindDumpEntry) {
-    Row(
+private fun FileEntryContent(entry: MindDumpEntry) {
+    DocumentChip(
+        fileName = entry.file.name,
+        mimeType = null,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = when (entry.type) {
-                EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
-                EntryType.UNKNOWN -> Icons.Filled.Description
-                else -> Icons.Filled.Description
-            },
-            contentDescription = entry.type.name,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp),
-        )
+            .padding(horizontal = 8.dp)
+            .padding(bottom = 8.dp),
+    )
+}
 
-        Spacer(modifier = Modifier.width(16.dp))
+// ──────────────────────────────────────────────
+// Type icon & color mapping
+// ──────────────────────────────────────────────
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = entry.file.name,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = formatEntryMeta(entry),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+private fun EntryType.toIcon(): ImageVector = when (this) {
+    EntryType.TEXT -> Icons.Filled.Edit
+    EntryType.PHOTO -> Icons.Filled.PhotoCamera
+    EntryType.RECORDING -> Icons.Filled.Mic
+    EntryType.VIDEO -> Icons.Filled.Videocam
+    EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
+    EntryType.UNKNOWN -> Icons.Filled.HelpOutline
+}
+
+@Composable
+private fun EntryType.toColor(): Color = when (this) {
+    EntryType.TEXT -> MaterialTheme.colorScheme.primary
+    EntryType.PHOTO -> MaterialTheme.colorScheme.tertiary
+    EntryType.RECORDING -> MaterialTheme.colorScheme.secondary
+    EntryType.VIDEO -> MaterialTheme.colorScheme.error
+    EntryType.FILE -> MaterialTheme.colorScheme.onSurfaceVariant
+    EntryType.UNKNOWN -> MaterialTheme.colorScheme.outline
+}
+
+// ──────────────────────────────────────────────
+// Relative timestamp formatting
+// ──────────────────────────────────────────────
+
+private fun formatRelativeTimestamp(dateFolder: String, timestamp: String): String {
+    val entryDate = try {
+        LocalDate.parse(dateFolder)
+    } catch (_: Exception) {
+        return "$dateFolder $timestamp"
+    }
+
+    val entryTime = try {
+        val inputFormat = DateTimeFormatter.ofPattern("HHmmss")
+        LocalTime.parse(timestamp, inputFormat)
+    } catch (_: Exception) {
+        return dateFolder
+    }
+
+    val entryDateTime = LocalDateTime.of(entryDate, entryTime)
+    val now = LocalDateTime.now()
+    val duration = Duration.between(entryDateTime, now)
+
+    return when {
+        duration.toMinutes() < 1 -> "刚刚"
+        duration.toHours() < 1 -> "${duration.toMinutes()}分钟前"
+        duration.toDays() < 1 && entryDate == now.toLocalDate() -> {
+            val fmt = DateTimeFormatter.ofPattern("今天 HH:mm")
+            entryDateTime.format(fmt)
         }
-
-        Text(
-            text = entry.dateFolder,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        duration.toDays() < 2 -> {
+            val fmt = DateTimeFormatter.ofPattern("昨天 HH:mm")
+            entryDateTime.format(fmt)
+        }
+        entryDate.year == now.year -> {
+            val fmt = DateTimeFormatter.ofPattern("M月d日 HH:mm")
+            entryDateTime.format(fmt)
+        }
+        else -> {
+            val fmt = DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm")
+            entryDateTime.format(fmt)
+        }
     }
 }
 
-private fun formatEntryMeta(entry: MindDumpEntry): String {
-    val size = entry.file.length()
-    val sizeStr = when {
-        size < 1024 -> "$size B"
-        size < 1024 * 1024 -> "${size / 1024} KB"
-        else -> "${size / (1024 * 1024)} MB"
-    }
-    val timeStr = try {
-        val inputFormat = DateTimeFormatter.ofPattern("HHmmss")
-        val outputFormat = DateTimeFormatter.ofPattern("HH:mm:ss")
-        java.time.LocalTime.parse(entry.timestamp, inputFormat).format(outputFormat)
-    } catch (_: Exception) {
-        entry.timestamp
-    }
-    return "$timeStr · $sizeStr"
+private fun formatFileSize(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+    else -> "${bytes / (1024 * 1024)} MB"
 }

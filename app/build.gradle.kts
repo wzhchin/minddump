@@ -96,8 +96,12 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.camerax.video)
 
-    // Image loading
+    // Image loading (Coil 3)
     implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+
+    // Zoomable image preview
+    implementation(libs.image.viewer)
 
     // Biometric
     implementation(libs.biometric)
