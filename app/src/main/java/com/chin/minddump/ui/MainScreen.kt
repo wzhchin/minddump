@@ -66,6 +66,7 @@ import com.chin.minddump.ui.components.MigrationDialog
 import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.SettingsDialog
+import com.chin.minddump.ui.components.SpaceSelectionDialog
 import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
 import com.chin.minddump.ui.theme.LocalExpressiveShapes
@@ -360,6 +361,37 @@ fun MainScreen(
                 PasswordInputDialog(
                     onConfirm = { viewModel.verifyPassword(it) },
                     onDismiss = { viewModel.cancelPasswordDialog() },
+                )
+            }
+
+            // --- Share intent dialog ---
+            uiState.pendingShareItems?.let { items ->
+                SpaceSelectionDialog(
+                    items = items,
+                    onPublicSelected = {
+                        viewModel.confirmShare(Space.PUBLIC)
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                message = context.getString(R.string.share_saved),
+                                duration = SnackbarDuration.Short,
+                            )
+                        }
+                    },
+                    onPrivateSelected = {
+                        viewModel.confirmShare(Space.PRIVATE)
+                        val msg = if (!viewModel.isSessionUnlocked()) {
+                            context.getString(R.string.share_saved_unencrypted)
+                        } else {
+                            context.getString(R.string.share_saved)
+                        }
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                message = msg,
+                                duration = SnackbarDuration.Short,
+                            )
+                        }
+                    },
+                    onDismiss = { viewModel.cancelShare() },
                 )
             }
         }

@@ -83,4 +83,16 @@
 
     <!-- Entry type display names -->
     <string name="photo">照片</string>
+
+    <!-- Share receiver -->
+    <string name="share_title">保存到 MindDump</string>
+    <string name="share_summary_text">1 段文字</string>
+    <string name="share_summary_file">1 个文件</string>
+    <string name="share_summary_files">%1$d 个文件</string>
+    <string name="share_summary_mixed">%1$d 项内容</string>
+    <string name="share_to_public">公开</string>
+    <string name="share_to_private">私密</string>
+    <string name="share_saved">已保存</string>
+    <string name="share_saved_unencrypted">已保存（未加密）</string>
+    <string name="share_error">部分内容保存失败</string>
 </resources>

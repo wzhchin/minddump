@@ -1,12 +1,18 @@
 package com.chin.minddump.ui
 
+import android.content.ContentResolver
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.storage.MindDumpEntry
+import com.chin.minddump.storage.ShareItem
 import com.chin.minddump.storage.Space
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +24,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
 
@@ -45,6 +52,9 @@ data class MindDumpUiState(
     val pendingNewDir: String? = null,
     val currentFileCount: Int = 0,
     val newDirFileCount: Int = 0,
+    // Share intent
+    val pendingShareItems: List<ShareItem>? = null,
+    val shareError: String? = null,
 )
 
 @HiltViewModel
@@ -52,7 +62,10 @@ class MindDumpViewModel
     @Inject
     constructor(
         private val repository: MindDumpRepository,
+        @ApplicationContext context: Context,
     ) : ViewModel() {
+
+        private val contentResolver: ContentResolver = context.contentResolver
 
         private val _uiState = MutableStateFlow(MindDumpUiState())
         val uiState: StateFlow<MindDumpUiState> = _uiState.asStateFlow()
@@ -267,6 +280,121 @@ class MindDumpViewModel
         fun setCameraPermissionGranted(granted: Boolean) {
             _uiState.update { it.copy(cameraPermissionGranted = granted) }
         }
+
+        // --- Share intent handling ---
+
+        /**
+         * Parse an incoming share intent and set pendingShareItems state.
+         * The UI layer will show a space-selection dialog when items are pending.
+         */
+        fun handleShareIntent(intent: Intent) {
+            val action = intent.action
+            if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return
+
+            val items = mutableListOf<ShareItem>()
+
+            // Extract text
+            val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (!text.isNullOrBlank()) {
+                items.add(ShareItem.Text(text))
+            }
+
+            // Extract file URI(s)
+            if (action == Intent.ACTION_SEND) {
+                val uri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM)
+                }
+                uri?.let {
+                    val fileName = resolveFileName(it)
+                    items.add(ShareItem.File(it, fileName))
+                }
+            } else {
+                val uris = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+                }
+                uris?.forEach { uri ->
+                    val fileName = resolveFileName(uri)
+                    items.add(ShareItem.File(uri, fileName))
+                }
+            }
+
+            if (items.isEmpty()) {
+                Timber.w("Share intent contained no extractable content")
+                return
+            }
+
+            Timber.d("Received %d share item(s)", items.size)
+            _uiState.update { it.copy(pendingShareItems = items, shareError = null) }
+        }
+
+        /**
+         * Resolve the original file name from a content URI.
+         * Falls back to lastPathSegment → "shared_file".
+         */
+        private fun resolveFileName(uri: Uri): String {
+            return try {
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && nameIndex >= 0) {
+                        return@use cursor.getString(nameIndex)
+                    }
+                    null
+                } ?: uri.lastPathSegment
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to resolve file name for URI: %s", uri)
+                uri.lastPathSegment
+            } ?: "shared_file"
+        }
+
+        /**
+         * Save all pending share items to the selected space.
+         * Clears pending state on completion.
+         */
+        fun confirmShare(space: Space) {
+            val items = _uiState.value.pendingShareItems ?: return
+            viewModelScope.launch(Dispatchers.IO) {
+                var errorCount = 0
+                for (item in items) {
+                    try {
+                        when (item) {
+                            is ShareItem.Text -> repository.saveTextEntry(space, item.content)
+                            is ShareItem.File -> repository.importFile(space, item.uri, item.fileName)
+                        }
+                    } catch (e: Exception) {
+                        Timber.e(e, "Failed to save share item")
+                        errorCount++
+                    }
+                }
+                _uiState.update {
+                    it.copy(
+                        pendingShareItems = null,
+                        shareError = if (errorCount > 0) "$errorCount" else null,
+                    )
+                }
+            }
+        }
+
+        /**
+         * Discard pending share items without saving.
+         */
+        fun cancelShare() {
+            _uiState.update { it.copy(pendingShareItems = null, shareError = null) }
+        }
+
+        fun clearShareError() {
+            _uiState.update { it.copy(shareError = null) }
+        }
+
+        /**
+         * Whether the Private space session is currently unlocked.
+         */
+        fun isSessionUnlocked(): Boolean = repository.isSessionUnlocked()
 
         // --- Work directory ---
 
