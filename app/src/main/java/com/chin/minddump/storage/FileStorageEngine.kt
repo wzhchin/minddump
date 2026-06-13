@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Environment
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -13,13 +14,15 @@ import java.time.format.DateTimeFormatter
  * Handles all file operations for MindDump.
  * Directory layout: {workDir}/{Public,Private}/YYYY-MM-DD/
  */
-class FileStorageEngine(private val context: Context) {
+class FileStorageEngine(
+    private val context: Context
+) {
     private val prefs = StoragePreferences(context)
 
     companion object {
         private const val DEFAULT_ROOT_DIR = "MindDump"
         private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
-        private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmss")
+        private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HHmmssSSS")
     }
 
     private fun todayDateStr(): String = LocalDate.now().format(DATE_FORMAT)
@@ -38,9 +41,7 @@ class FileStorageEngine(private val context: Context) {
     /**
      * Get the display path for the current root directory.
      */
-    fun getRootDirPath(): String {
-        return getRootDir().absolutePath
-    }
+    fun getRootDirPath(): String = getRootDir().absolutePath
 
     /**
      * Set a new work directory.
@@ -52,27 +53,19 @@ class FileStorageEngine(private val context: Context) {
     /**
      * Check if a work directory has been configured.
      */
-    fun isWorkDirConfigured(): Boolean {
-        return prefs.isConfigured()
-    }
+    fun isWorkDirConfigured(): Boolean = prefs.isConfigured()
 
     fun getSpaceDir(
         space: Space,
         date: String,
-    ): File {
-        return File(getRootDir(), "${space.folderName}/$date")
-    }
+    ): File = File(getRootDir(), "${space.folderName}/$date")
 
-    fun getTodayDir(space: Space): File {
-        return getSpaceDir(space, todayDateStr())
-    }
+    fun getTodayDir(space: Space): File = getSpaceDir(space, todayDateStr())
 
     /**
      * Check if we have external storage access.
      */
-    fun hasStoragePermission(): Boolean {
-        return Environment.isExternalStorageManager()
-    }
+    fun hasStoragePermission(): Boolean = Environment.isExternalStorageManager()
 
     /**
      * Ensure the directory for today exists for the given space.
@@ -86,6 +79,20 @@ class FileStorageEngine(private val context: Context) {
     }
 
     /**
+     * Generate a unique file in [dir] with the given [baseName] and [ext].
+     * Appends _1, _2, ... suffix on collision.
+     */
+    private fun uniqueFile(dir: File, baseName: String, ext: String): File {
+        var file = File(dir, "$baseName.$ext")
+        var seq = 1
+        while (file.exists()) {
+            file = File(dir, "${baseName}_$seq.$ext")
+            seq++
+        }
+        return file
+    }
+
+    /**
      * Save a text entry as Markdown.
      */
     fun saveTextEntry(
@@ -93,8 +100,7 @@ class FileStorageEngine(private val context: Context) {
         content: String,
     ): File {
         val dir = ensureTodayDir(space)
-        val timestamp = nowTimestampStr()
-        val file = File(dir, "文字_$timestamp.md")
+        val file = uniqueFile(dir, "文字_${nowTimestampStr()}", "md")
         file.writeText(content)
         return file
     }
@@ -104,8 +110,7 @@ class FileStorageEngine(private val context: Context) {
      */
     fun getRecordingFile(space: Space): File {
         val dir = ensureTodayDir(space)
-        val timestamp = nowTimestampStr()
-        return File(dir, "录音_$timestamp.m4a")
+        return uniqueFile(dir, "录音_${nowTimestampStr()}", "m4a")
     }
 
     /**
@@ -113,8 +118,7 @@ class FileStorageEngine(private val context: Context) {
      */
     fun getPhotoFile(space: Space): File {
         val dir = ensureTodayDir(space)
-        val timestamp = nowTimestampStr()
-        return File(dir, "拍照_$timestamp.jpg")
+        return uniqueFile(dir, "拍照_${nowTimestampStr()}", "jpg")
     }
 
     /**
@@ -122,12 +126,12 @@ class FileStorageEngine(private val context: Context) {
      */
     fun getVideoFile(space: Space): File {
         val dir = ensureTodayDir(space)
-        val timestamp = nowTimestampStr()
-        return File(dir, "视频_$timestamp.mp4")
+        return uniqueFile(dir, "视频_${nowTimestampStr()}", "mp4")
     }
 
     /**
      * Import a file from a content URI.
+     * @throws IOException if the URI cannot be opened or the result is empty.
      */
     fun importFile(
         space: Space,
@@ -137,10 +141,16 @@ class FileStorageEngine(private val context: Context) {
         val dir = ensureTodayDir(space)
         val timestamp = nowTimestampStr()
         val destFile = File(dir, "文件_${timestamp}_$originalFileName")
-        context.contentResolver.openInputStream(uri)?.use { input ->
+        val inputStream = context.contentResolver.openInputStream(uri)
+            ?: throw IOException("Cannot open input stream for URI: $uri")
+        inputStream.use { input ->
             FileOutputStream(destFile).use { output ->
                 input.copyTo(output)
             }
+        }
+        if (!destFile.exists() || destFile.length() == 0L) {
+            destFile.delete()
+            throw IOException("Imported file is empty or missing: ${destFile.absolutePath}")
         }
         return destFile
     }
@@ -154,14 +164,17 @@ class FileStorageEngine(private val context: Context) {
 
         val entries = mutableListOf<MindDumpEntry>()
 
-        spaceDir.listFiles()
+        spaceDir
+            .listFiles()
             ?.filter { it.isDirectory }
             ?.forEach { dateDir ->
                 val dateFolder = dateDir.name
-                dateDir.listFiles()
+                dateDir
+                    .listFiles()
                     ?.filter { it.isFile }
                     ?.forEach { file ->
-                        val type = EntryType.fromFileName(file.name)
+                        val nameForType = file.name.removeSuffix(".enc")
+                        val type = EntryType.fromFileName(nameForType)
                         entries.add(
                             MindDumpEntry(
                                 file = file,
@@ -180,9 +193,7 @@ class FileStorageEngine(private val context: Context) {
     /**
      * Delete an entry file.
      */
-    fun deleteEntry(entry: MindDumpEntry): Boolean {
-        return entry.file.delete()
-    }
+    fun deleteEntry(entry: MindDumpEntry): Boolean = entry.file.delete()
 
     /**
      * Count all files recursively under the current root directory.

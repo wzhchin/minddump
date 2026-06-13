@@ -17,7 +17,9 @@ import com.chin.minddump.camera.CameraManager
 import com.chin.minddump.ui.statistics.StatisticsScreen
 import com.chin.minddump.ui.theme.LocalAnimationDuration
 
-sealed class Screen(val route: String) {
+sealed class Screen(
+    val route: String
+) {
     data object Main : Screen("main")
 
     data object Camera : Screen("camera")

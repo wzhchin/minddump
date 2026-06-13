@@ -2,6 +2,7 @@ package com.chin.minddump.di
 
 import android.content.Context
 import androidx.room.Room
+import com.chin.minddump.data.MIGRATION_1_2
 import com.chin.minddump.data.MindDumpDatabase
 import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.security.CryptoEngine
@@ -36,11 +37,13 @@ object StorageModule {
     fun provideDatabase(
         @ApplicationContext context: Context,
     ): MindDumpDatabase =
-        Room.databaseBuilder(
-            context,
-            MindDumpDatabase::class.java,
-            "minddump.db",
-        ).build()
+        Room
+            .databaseBuilder(
+                context,
+                MindDumpDatabase::class.java,
+                "minddump.db",
+            ).addMigrations(MIGRATION_1_2)
+            .build()
 
     @Provides
     @Singleton

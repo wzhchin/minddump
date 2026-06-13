@@ -10,20 +10,22 @@ import com.chin.minddump.R
  * Wraps AndroidX Biometric authentication for Private space access.
  * Uses BIOMETRIC_STRONG with DEVICE_CREDENTIAL as fallback (PIN/pattern/password).
  */
-class BiometricHelper(private val activity: FragmentActivity) {
+class BiometricHelper(
+    private val activity: FragmentActivity
+) {
     fun authenticate(
         onSuccess: () -> Unit,
         onError: () -> Unit,
     ) {
         val promptInfo =
-            BiometricPrompt.PromptInfo.Builder()
+            BiometricPrompt.PromptInfo
+                .Builder()
                 .setTitle(activity.getString(R.string.biometric_title))
                 .setSubtitle(activity.getString(R.string.biometric_subtitle))
                 .setAllowedAuthenticators(
                     BiometricManager.Authenticators.BIOMETRIC_STRONG or
                         BiometricManager.Authenticators.DEVICE_CREDENTIAL,
-                )
-                .build()
+                ).build()
 
         val executor = ContextCompat.getMainExecutor(activity)
 

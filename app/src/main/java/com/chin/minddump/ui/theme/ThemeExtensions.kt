@@ -70,40 +70,35 @@ val LocalMotionCurve = staticCompositionLocalOf { MotionCurve() }
  * Check if the user has enabled "Remove animations" in accessibility settings.
  * When true, all durations become 0 and curves become LinearEasing.
  */
-fun Context.isReduceMotionEnabled(): Boolean {
-    return Settings.Global.getFloat(
-        contentResolver,
-        Settings.Global.TRANSITION_ANIMATION_SCALE,
-        1f,
-    ) == 0f || Settings.Global.getFloat(
+fun Context.isReduceMotionEnabled(): Boolean = Settings.Global.getFloat(
+    contentResolver,
+    Settings.Global.TRANSITION_ANIMATION_SCALE,
+    1f,
+) == 0f ||
+    Settings.Global.getFloat(
         contentResolver,
         Settings.Global.WINDOW_ANIMATION_SCALE,
         1f,
     ) == 0f
-}
 
 /**
  * Provide reduced-motion-aware animation constants.
  * Returns zero durations and linear curves when the user disables animations.
  */
 @Composable
-fun rememberAnimationDuration(reduceMotion: Boolean = false): AnimationDuration {
-    return if (reduceMotion) {
-        AnimationDuration(short = 0, medium = 0, long = 0)
-    } else {
-        AnimationDuration()
-    }
+fun rememberAnimationDuration(reduceMotion: Boolean = false): AnimationDuration = if (reduceMotion) {
+    AnimationDuration(short = 0, medium = 0, long = 0)
+} else {
+    AnimationDuration()
 }
 
 @Composable
-fun rememberMotionCurve(reduceMotion: Boolean = false): MotionCurve {
-    return if (reduceMotion) {
-        MotionCurve(
-            emphasize = Easing { it },
-            standard = Easing { it },
-            decelerate = Easing { it },
-        )
-    } else {
-        MotionCurve()
-    }
+fun rememberMotionCurve(reduceMotion: Boolean = false): MotionCurve = if (reduceMotion) {
+    MotionCurve(
+        emphasize = Easing { it },
+        standard = Easing { it },
+        decelerate = Easing { it },
+    )
+} else {
+    MotionCurve()
 }

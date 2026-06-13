@@ -11,17 +11,30 @@ import kotlinx.coroutines.flow.Flow
 
 // ── Statistics query result classes ──
 
-data class DayCount(val dateFolder: String, val count: Int)
+data class DayCount(
+    val dateFolder: String,
+    val count: Int
+)
 
-data class TypeCount(val type: EntryType, val count: Int)
+data class TypeCount(
+    val type: EntryType,
+    val count: Int
+)
 
-data class HourCount(val hour: Int, val count: Int)
+data class HourCount(
+    val hour: Int,
+    val count: Int
+)
 
 @Dao
+@Suppress("TooManyFunctions")
 interface EntryDao {
 
     @Query("SELECT * FROM entries WHERE space = :space ORDER BY lastModified DESC")
     fun getAll(space: Space): Flow<List<EntryEntity>>
+
+    @Query("SELECT * FROM entries WHERE space = :space")
+    suspend fun getAllSnapshot(space: Space): List<EntryEntity>
 
     @Query("SELECT * FROM entries WHERE space = :space AND dateFolder = :date ORDER BY lastModified DESC")
     fun getByDate(space: Space, date: String): Flow<List<EntryEntity>>
@@ -47,6 +60,12 @@ interface EntryDao {
 
     @Query("DELETE FROM entries WHERE filePath = :filePath")
     suspend fun deleteByPath(filePath: String)
+
+    @Query("DELETE FROM entries WHERE filePath IN (:paths)")
+    suspend fun deleteByPaths(paths: List<String>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun updateAll(entries: List<EntryEntity>)
 
     @Query("SELECT COUNT(*) FROM entries WHERE space = :space")
     suspend fun count(space: Space): Int

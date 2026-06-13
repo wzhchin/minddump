@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(rtk grep *)"
+      "Bash(rtk grep *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'chore: add /build to .gitignore *)"
     ]
   }
 }

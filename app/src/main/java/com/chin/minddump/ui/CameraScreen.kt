@@ -33,16 +33,17 @@ fun CameraScreen(
         // Camera preview
         AndroidView(
             factory = { ctx ->
-                PreviewView(ctx).apply {
-                    layoutParams =
-                        ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                    scaleType = PreviewView.ScaleType.FILL_CENTER
-                }.also { previewView ->
-                    cameraManager.startPreview(previewView, lifecycleOwner)
-                }
+                PreviewView(ctx)
+                    .apply {
+                        layoutParams =
+                            ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                        scaleType = PreviewView.ScaleType.FILL_CENTER
+                    }.also { previewView ->
+                        cameraManager.startPreview(previewView, lifecycleOwner)
+                    }
             },
             modifier = Modifier.fillMaxSize(),
         )

@@ -9,7 +9,6 @@ import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -213,18 +212,24 @@ class MindDumpRepository
         }
 
         /**
-         * Refresh all entries for a space by re-scanning the filesystem.
+         * Bidirectional reconcile: sync Room with actual filesystem state.
+         * - Disk has & DB doesn't → insert
+         * - DB has & Disk doesn't → delete orphan
+         * - Both have but stale → update contentPreview / lastModified
          */
-        suspend fun refreshFromDisk(space: Space) =
+        suspend fun reconcileWithDisk(space: Space) =
             withContext(Dispatchers.IO) {
-                Timber.d("Refreshing entries from disk for %s", space.name)
+                Timber.d("Reconciling entries from disk for %s", space.name)
                 val diskEntries = storageEngine.scanEntries(space)
-                val existingPaths = dao.getAll(space).first().map { it.filePath }.toSet()
+                val diskPathMap = diskEntries.associateBy { it.file.absolutePath }
+                val dbEntities = dao.getAllSnapshot(space)
+                val dbPathMap = dbEntities.associateBy { it.filePath }
 
-                val newEntries = diskEntries.filter { it.file.absolutePath !in existingPaths }
-                if (newEntries.isNotEmpty()) {
+                // 1. Insert new (disk has, DB doesn't)
+                val toInsert = diskEntries.filter { it.file.absolutePath !in dbPathMap }
+                if (toInsert.isNotEmpty()) {
                     dao.insertAll(
-                        newEntries.map { entry ->
+                        toInsert.map { entry ->
                             val preview = if (entry.type == EntryType.TEXT) {
                                 try {
                                     entry.file.readText().take(500)
@@ -239,6 +244,48 @@ class MindDumpRepository
                         },
                     )
                 }
+
+                // 2. Delete orphans (DB has, disk doesn't)
+                val orphanPaths = dbEntities
+                    .filter { it.filePath !in diskPathMap }
+                    .map { it.filePath }
+                if (orphanPaths.isNotEmpty()) {
+                    dao.deleteByPaths(orphanPaths)
+                }
+
+                // 3. Update stale entries (lastModified changed)
+                val toUpdate = dbEntities
+                    .filter { dbEntity ->
+                        val diskEntry = diskPathMap[dbEntity.filePath] ?: return@filter false
+                        dbEntity.lastModified != diskEntry.file.lastModified()
+                    }.map { dbEntity ->
+                        val diskEntry = diskPathMap[dbEntity.filePath]!!
+                        val preview = if (dbEntity.type == EntryType.TEXT) {
+                            try {
+                                diskEntry.file.readText().take(500)
+                            } catch (_: Exception) {
+                                ""
+                            }
+                        } else {
+                            ""
+                        }
+                        dbEntity.copy(
+                            lastModified = diskEntry.file.lastModified(),
+                            contentPreview = preview,
+                            isEncrypted = cryptoEngine.isEncryptedFile(diskEntry.file),
+                        )
+                    }
+                if (toUpdate.isNotEmpty()) {
+                    dao.updateAll(toUpdate)
+                }
+
+                Timber.d(
+                    "Reconcile %s: +%d inserted, -%d orphans, ~%d updated",
+                    space.name,
+                    toInsert.size,
+                    orphanPaths.size,
+                    toUpdate.size,
+                )
             }
 
         // --- Work directory delegation ---
@@ -279,6 +326,9 @@ class MindDumpRepository
         private fun encryptFile(source: File, password: String): File {
             val encryptedFile = File(source.parent, source.name + ".enc")
             cryptoEngine.encryptFile(source, encryptedFile, password)
+            check(encryptedFile.exists() && encryptedFile.length() > 0) {
+                "Encryption failed: output file missing or empty — keeping plaintext ${source.absolutePath}"
+            }
             source.delete()
             return encryptedFile
         }

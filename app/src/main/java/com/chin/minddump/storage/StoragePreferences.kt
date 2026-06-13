@@ -6,7 +6,9 @@ import android.content.SharedPreferences
 /**
  * Persists the user-selected work directory across sessions.
  */
-class StoragePreferences(context: Context) {
+class StoragePreferences(
+    context: Context
+) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("minddump_prefs", Context.MODE_PRIVATE)
 
@@ -17,9 +19,7 @@ class StoragePreferences(context: Context) {
     /**
      * Returns the saved work directory, or null if not yet configured.
      */
-    fun getWorkDir(): String? {
-        return prefs.getString(KEY_WORK_DIR, null)
-    }
+    fun getWorkDir(): String? = prefs.getString(KEY_WORK_DIR, null)
 
     /**
      * Save the work directory path.
@@ -31,7 +31,5 @@ class StoragePreferences(context: Context) {
     /**
      * Returns true if a work directory has been configured.
      */
-    fun isConfigured(): Boolean {
-        return prefs.contains(KEY_WORK_DIR)
-    }
+    fun isConfigured(): Boolean = prefs.contains(KEY_WORK_DIR)
 }

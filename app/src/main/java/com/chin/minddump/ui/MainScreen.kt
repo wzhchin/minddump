@@ -18,7 +18,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -444,7 +443,9 @@ private fun resolveTreeUriToPath(treeUri: Uri): String? {
             val relativePath = parts[1]
             when (storageId) {
                 "primary", "home" -> {
-                    val basePath = android.os.Environment.getExternalStorageDirectory().absolutePath
+                    val basePath = android.os.Environment
+                        .getExternalStorageDirectory()
+                        .absolutePath
                     if (relativePath.isEmpty()) basePath else "$basePath/$relativePath"
                 }
                 else -> {

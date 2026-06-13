@@ -21,7 +21,10 @@ data class StatisticsUiState(
 /**
  * Time range options for the trend chart.
  */
-enum class TrendRange(val days: Int, val label: String) {
+enum class TrendRange(
+    val days: Int,
+    val label: String
+) {
     WEEK(7, "7天"),
     MONTH(30, "30天"),
     QUARTER(90, "90天"),

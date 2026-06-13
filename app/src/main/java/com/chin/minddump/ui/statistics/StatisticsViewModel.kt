@@ -3,9 +3,7 @@ package com.chin.minddump.ui.statistics
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chin.minddump.data.DayCount
-import com.chin.minddump.data.HourCount
 import com.chin.minddump.data.MindDumpRepository
-import com.chin.minddump.data.TypeCount
 import com.chin.minddump.storage.Space
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,9 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
@@ -68,13 +64,14 @@ class StatisticsViewModel
             range: TrendRange,
         ): List<DayCount> {
             val cutoff = LocalDate.now().minusDays(range.days.toLong())
-            return dayCounts.filter {
-                try {
-                    LocalDate.parse(it.dateFolder) >= cutoff
-                } catch (_: Exception) {
-                    false
-                }
-            }.map { DayCount(it.dateFolder, it.count) }
+            return dayCounts
+                .filter {
+                    try {
+                        LocalDate.parse(it.dateFolder) >= cutoff
+                    } catch (_: Exception) {
+                        false
+                    }
+                }.map { DayCount(it.dateFolder, it.count) }
         }
 
         /**
@@ -90,8 +87,7 @@ class StatisticsViewModel
                     } catch (_: Exception) {
                         null
                     }
-                }
-                .sortedDescending()
+                }.sortedDescending()
                 .toSet()
 
             if (datesWithEntries.isEmpty()) return Pair(0, 0)

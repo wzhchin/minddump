@@ -278,8 +278,7 @@ fun Modifier.noRippleClickable(
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
-        }
-        .clickable(
+        }.clickable(
             interactionSource = interactionSource,
             indication = null, // No ripple
             role = role,

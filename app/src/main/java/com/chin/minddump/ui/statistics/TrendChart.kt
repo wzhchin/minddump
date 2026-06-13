@@ -66,8 +66,7 @@ fun TrendChart(
                         .clip(RoundedCornerShape(8.dp))
                         .background(
                             if (isSelected) primaryColor.copy(alpha = 0.15f) else surfaceVariant,
-                        )
-                        .clickable { onRangeSelected(range) }
+                        ).clickable { onRangeSelected(range) }
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                 ) {
                     Text(
@@ -142,12 +141,10 @@ fun TrendChart(
     }
 }
 
-private fun formatShortDate(dateStr: String): String {
-    return try {
-        val date = LocalDate.parse(dateStr)
-        val formatter = DateTimeFormatter.ofPattern("M/d")
-        date.format(formatter)
-    } catch (_: Exception) {
-        dateStr
-    }
+private fun formatShortDate(dateStr: String): String = try {
+    val date = LocalDate.parse(dateStr)
+    val formatter = DateTimeFormatter.ofPattern("M/d")
+    date.format(formatter)
+} catch (_: Exception) {
+    dateStr
 }

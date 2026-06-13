@@ -22,10 +22,13 @@ import androidx.compose.ui.unit.dp
 enum class BubblePosition {
     /** Single bubble, not part of a group */
     SINGLE,
+
     /** First bubble in a group (top) */
     FIRST,
+
     /** Middle bubble in a group */
     MIDDLE,
+
     /** Last bubble in a group (bottom) */
     LAST
 }

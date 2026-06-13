@@ -9,9 +9,12 @@ import androidx.security.crypto.MasterKey
  * Manages the Private space password using EncryptedSharedPreferences.
  * The password hash is stored securely with Android Keystore-backed encryption.
  */
-class PasswordStore(context: Context) {
+class PasswordStore(
+    context: Context
+) {
 
-    private val masterKey = MasterKey.Builder(context)
+    private val masterKey = MasterKey
+        .Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
 
@@ -31,16 +34,15 @@ class PasswordStore(context: Context) {
     /**
      * Check if a password has been set for Private space.
      */
-    fun hasPassword(): Boolean {
-        return prefs.getBoolean(KEY_HAS_PASSWORD, false)
-    }
+    fun hasPassword(): Boolean = prefs.getBoolean(KEY_HAS_PASSWORD, false)
 
     /**
      * Save the password (stores its hash, not plaintext).
      */
     fun savePassword(password: String) {
         val hash = hashPassword(password)
-        prefs.edit()
+        prefs
+            .edit()
             .putString(KEY_PASSWORD_HASH, hash)
             .putBoolean(KEY_HAS_PASSWORD, true)
             .apply()
@@ -59,7 +61,8 @@ class PasswordStore(context: Context) {
      * Clear the stored password.
      */
     fun clearPassword() {
-        prefs.edit()
+        prefs
+            .edit()
             .remove(KEY_PASSWORD_HASH)
             .putBoolean(KEY_HAS_PASSWORD, false)
             .apply()

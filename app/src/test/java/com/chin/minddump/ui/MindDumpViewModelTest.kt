@@ -40,9 +40,7 @@ class MindDumpViewModelTest {
         kotlinx.coroutines.Dispatchers.resetMain()
     }
 
-    private fun createViewModel(): MindDumpViewModel {
-        return MindDumpViewModel(mockRepository)
-    }
+    private fun createViewModel(): MindDumpViewModel = MindDumpViewModel(mockRepository)
 
     @Test
     fun `initial state is Public and not dark theme`() {

@@ -13,12 +13,16 @@ data class MindDumpEntry(
     val timestamp: String, // HHmmss
 )
 
-enum class Space(val folderName: String) {
+enum class Space(
+    val folderName: String
+) {
     PUBLIC("Public"),
     PRIVATE("Private"),
 }
 
-enum class EntryType(val prefix: String) {
+enum class EntryType(
+    val prefix: String
+) {
     TEXT("文字"),
     RECORDING("录音"),
     PHOTO("拍照"),
@@ -28,15 +32,13 @@ enum class EntryType(val prefix: String) {
     ;
 
     companion object {
-        fun fromFileName(name: String): EntryType {
-            return when {
-                name.startsWith("文字_") && name.endsWith(".md") -> TEXT
-                name.startsWith("录音_") && (name.endsWith(".m4a") || name.endsWith(".aac")) -> RECORDING
-                name.startsWith("拍照_") && (name.endsWith(".jpg") || name.endsWith(".jpeg")) -> PHOTO
-                name.startsWith("视频_") && name.endsWith(".mp4") -> VIDEO
-                name.startsWith("文件_") -> FILE
-                else -> UNKNOWN
-            }
+        fun fromFileName(name: String): EntryType = when {
+            name.startsWith("文字_") && name.endsWith(".md") -> TEXT
+            name.startsWith("录音_") && (name.endsWith(".m4a") || name.endsWith(".aac")) -> RECORDING
+            name.startsWith("拍照_") && (name.endsWith(".jpg") || name.endsWith(".jpeg")) -> PHOTO
+            name.startsWith("视频_") && name.endsWith(".mp4") -> VIDEO
+            name.startsWith("文件_") -> FILE
+            else -> UNKNOWN
         }
     }
 }

@@ -61,19 +61,22 @@ class CameraManager {
             cameraProvider = future.get()
 
             preview =
-                Preview.Builder()
+                Preview
+                    .Builder()
                     .build()
                     .also {
                         it.surfaceProvider = previewView.surfaceProvider
                     }
 
             imageCapture =
-                ImageCapture.Builder()
+                ImageCapture
+                    .Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                     .build()
 
             val recorder =
-                Recorder.Builder()
+                Recorder
+                    .Builder()
                     .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
                     .build()
             videoCapture = VideoCapture.withOutput(recorder)

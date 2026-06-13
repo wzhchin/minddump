@@ -84,8 +84,7 @@ class MindDumpViewModel
                     } else {
                         repository.searchEntries(space, query)
                     }
-                }
-                .stateIn(
+                }.stateIn(
                     scope = viewModelScope,
                     started = SharingStarted.WhileSubscribed(5000),
                     initialValue = emptyList(),
@@ -108,8 +107,8 @@ class MindDumpViewModel
 
             // Initial sync from disk
             viewModelScope.launch(Dispatchers.IO) {
-                repository.refreshFromDisk(Space.PUBLIC)
-                repository.refreshFromDisk(Space.PRIVATE)
+                repository.reconcileWithDisk(Space.PUBLIC)
+                repository.reconcileWithDisk(Space.PRIVATE)
             }
         }
 
@@ -205,7 +204,7 @@ class MindDumpViewModel
          */
         fun refreshEntries() {
             viewModelScope.launch(Dispatchers.IO) {
-                repository.refreshFromDisk(_uiState.value.currentSpace)
+                repository.reconcileWithDisk(_uiState.value.currentSpace)
             }
         }
 
@@ -237,22 +236,16 @@ class MindDumpViewModel
             _uiState.update { it.copy(isRecording = true) }
         }
 
-        fun getRecordingFile(): File {
-            return repository.getRecordingFile(_uiState.value.currentSpace)
-        }
+        fun getRecordingFile(): File = repository.getRecordingFile(_uiState.value.currentSpace)
 
         fun stopRecording() {
             _uiState.update { it.copy(isRecording = false) }
             refreshEntries()
         }
 
-        fun getPhotoFile(): File {
-            return repository.getPhotoFile(_uiState.value.currentSpace)
-        }
+        fun getPhotoFile(): File = repository.getPhotoFile(_uiState.value.currentSpace)
 
-        fun getVideoFile(): File {
-            return repository.getVideoFile(_uiState.value.currentSpace)
-        }
+        fun getVideoFile(): File = repository.getVideoFile(_uiState.value.currentSpace)
 
         fun onMediaCaptured() {
             refreshEntries()
@@ -263,7 +256,12 @@ class MindDumpViewModel
             fileName: String,
         ) {
             viewModelScope.launch(Dispatchers.IO) {
-                repository.importFile(_uiState.value.currentSpace, uri, fileName)
+                try {
+                    repository.importFile(_uiState.value.currentSpace, uri, fileName)
+                } catch (e: Exception) {
+                    Timber.e(e, "Failed to import file")
+                    _uiState.update { it.copy(shareError = "1") }
+                }
             }
         }
 
