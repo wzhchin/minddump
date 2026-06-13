@@ -207,6 +207,71 @@ class MindDumpRepository
             }
 
         /**
+         * Outcome of saving an edit to an existing entry.
+         * [Locked] means the session password is gone, so the UI keeps the editor
+         * open instead of discarding the user's text.
+         */
+        sealed interface EditSaveResult {
+            data class Saved(val entry: MindDumpEntry) : EditSaveResult
+            data object Locked : EditSaveResult
+        }
+
+        /**
+         * Overwrite an existing text/comment entry's content in place.
+         * Preserves the file's path and identity; bumps lastModified so the entry
+         * floats to the top of the feed. Re-encrypts when the entry was encrypted.
+         * Returns [EditSaveResult.Locked] (instead of throwing) when an encrypted
+         * entry can't be saved because the session is no longer unlocked.
+         */
+        suspend fun saveEntryEdit(entry: MindDumpEntry, newText: String): EditSaveResult =
+            withContext(Dispatchers.IO) {
+                val wasEncrypted = cryptoEngine.isEncryptedFile(entry.file)
+                if (wasEncrypted) {
+                    val password = sessionPassword
+                        ?: return@withContext EditSaveResult.Locked
+                    // Plaintext is written to a working file, then re-encrypted to the
+                    // original .enc path (mirrors moveEntryToSpace's encrypt flow).
+                    val workFile = File(storageEngine.getRootDir(), ".cache/${entry.file.nameWithoutExtension}")
+                    workFile.parentFile?.mkdirs()
+                    storageEngine.overwriteText(workFile, newText)
+                    cryptoEngine.encryptFile(workFile, entry.file, password)
+                    check(entry.file.exists() && entry.file.length() > 0) {
+                        "Re-encryption failed for ${entry.file.absolutePath}"
+                    }
+                    workFile.delete()
+                } else {
+                    storageEngine.overwriteText(entry.file, newText)
+                }
+
+                dao.deleteByPath(entry.file.absolutePath)
+                val refreshed = entry // path/type/role unchanged; lastModified flows in via toEntity
+                dao.insert(
+                    refreshed.toEntity(
+                        contentPreview = newText.take(500),
+                        isEncrypted = wasEncrypted,
+                    ),
+                )
+                EditSaveResult.Saved(refreshed)
+            }
+
+        /**
+         * Load the plaintext content of a text/comment entry for editing.
+         * Decrypts to a cache temp file first when the entry is encrypted.
+         */
+        suspend fun loadEntryText(entry: MindDumpEntry): String =
+            withContext(Dispatchers.IO) {
+                if (cryptoEngine.isEncryptedFile(entry.file)) {
+                    val password = sessionPassword ?: error("Session not unlocked")
+                    val tempFile = File(storageEngine.getRootDir(), ".cache/${entry.file.nameWithoutExtension}")
+                    tempFile.parentFile?.mkdirs()
+                    cryptoEngine.decryptFile(entry.file, tempFile, password)
+                    tempFile.readText()
+                } else {
+                    entry.file.readText()
+                }
+            }
+
+        /**
          * Create a new group and return its directory.
          */
         suspend fun createGroup(space: Space, name: String?): File =

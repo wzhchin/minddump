@@ -58,6 +58,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.R
+import com.chin.minddump.storage.EntryRole
+import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.ui.components.BiometricGate
@@ -84,7 +86,7 @@ fun MainScreen(
     viewModel: MindDumpViewModel = viewModel(),
     audioRecorder: AudioRecorder,
     onNavigateToCamera: () -> Unit = {},
-    onNavigateToFullscreenEdit: () -> Unit = {},
+    onNavigateToFullscreenEdit: (entryPath: String?) -> Unit = {},
     onNavigateToStatistics: () -> Unit = {},
     onNavigateToGroupDetail: () -> Unit = {},
 ) {
@@ -305,7 +307,7 @@ fun MainScreen(
                                 },
                                 onImportClick = { fileImportLauncher.launch(arrayOf("*/*")) },
                                 onSpaceToggle = { viewModel.requestSpaceSwitch() },
-                                onFullscreenClick = onNavigateToFullscreenEdit,
+                                onFullscreenClick = { onNavigateToFullscreenEdit(null) },
                             ),
                         )
                     }
@@ -323,7 +325,11 @@ fun MainScreen(
                                 if (uiState.isMultiSelectMode) {
                                     viewModel.toggleEntrySelection(entry)
                                 } else {
-                                    openFile(context, entry.file)
+                                    onEntryOpen(
+                                        context = context,
+                                        entry = entry,
+                                        onTextEdit = { file -> onNavigateToFullscreenEdit(file.absolutePath) },
+                                    )
                                 }
                             },
                             onEntryLongClick = { entry ->
@@ -590,6 +596,23 @@ fun openFile(context: Context, file: File) {
         context.startActivity(intent)
     } catch (e: Exception) {
         Toast.makeText(context, context.getString(R.string.cannot_open_file, e.message), Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * Unified tap-to-open dispatch: text entries and comments open the in-app
+ * fullscreen editor; everything else opens in the external viewer. Used by the
+ * main list, group detail, and comment bubbles so the rule lives in one place.
+ */
+fun onEntryOpen(
+    context: Context,
+    entry: MindDumpEntry,
+    onTextEdit: (File) -> Unit,
+) {
+    if (entry.type == EntryType.TEXT || entry.role == EntryRole.COMMENT) {
+        onTextEdit(entry.file)
+    } else {
+        openFile(context, entry.file)
     }
 }
 

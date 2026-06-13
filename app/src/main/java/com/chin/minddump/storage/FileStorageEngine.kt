@@ -110,6 +110,14 @@ class FileStorageEngine(
     }
 
     /**
+     * Overwrite an existing text entry's content in place. The file path and
+     * identity are preserved; only the bytes change (bumping lastModified).
+     */
+    fun overwriteText(file: File, content: String) {
+        file.writeText(content)
+    }
+
+    /**
      * Get the output file for a recording.
      * Produces: {yymm-dd-HHMMSS}-f.m4a
      */

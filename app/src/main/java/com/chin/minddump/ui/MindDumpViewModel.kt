@@ -90,6 +90,8 @@ data class MindDumpUiState(
     val groups: List<GroupSummary> = emptyList(),
     // Group currently open in the GroupDetail screen (null on main list)
     val selectedGroup: File? = null,
+    // Text/comment entry open in the fullscreen editor's edit mode (null in new-entry mode)
+    val entryToEdit: File? = null,
     // Multi-select: show the merge-to-group picker
     val showGroupMergePicker: Boolean = false,
     // Rename group dialog state
@@ -532,6 +534,34 @@ class MindDumpViewModel
         fun clearSelectedGroup() {
             _uiState.update { it.copy(selectedGroup = null) }
         }
+
+        /** Open a text/comment entry in the fullscreen editor's edit mode. */
+        fun openEntryForEdit(file: File) {
+            _uiState.update { it.copy(entryToEdit = file) }
+        }
+
+        /** Leave the fullscreen editor edit mode. */
+        fun clearEntryToEdit() {
+            _uiState.update { it.copy(entryToEdit = null) }
+        }
+
+        /**
+         * Save an edited entry's new text back to its file. Returns true on success,
+         * false if the encrypted session is locked (caller toasts and keeps editing).
+         */
+        suspend fun saveEntryEdit(entry: MindDumpEntry, newText: String): Boolean {
+            return when (val result = repository.saveEntryEdit(entry, newText)) {
+                is MindDumpRepository.EditSaveResult.Saved -> {
+                    refreshEntries()
+                    true
+                }
+                MindDumpRepository.EditSaveResult.Locked -> false
+            }
+        }
+
+        /** Load the plaintext content of an entry for editor pre-fill. */
+        suspend fun loadEntryText(entry: MindDumpEntry): String =
+            repository.loadEntryText(entry)
 
         /** Show the rename-group dialog. */
         fun requestRenameGroup(groupDir: File) {

@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.ui.components.EntryActionDrawer
-import com.chin.minddump.ui.theme.LocalExpressiveShapes
 
 /**
  * Shows the members of the currently selected group ([uiState.selectedGroup]).
@@ -39,11 +38,11 @@ import com.chin.minddump.ui.theme.LocalExpressiveShapes
 fun GroupDetailScreen(
     viewModel: MindDumpViewModel,
     onBack: () -> Unit,
+    onNavigateToFullscreenEdit: (entryPath: String?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val shapes = LocalExpressiveShapes.current
     val groupDir = uiState.selectedGroup
     val groupName = groupDir?.let { FileMetadata.fromFile(it)?.originalName ?: it.name }
         ?: "分组"
@@ -100,7 +99,13 @@ fun GroupDetailScreen(
                     ) { entry ->
                         GroupedEntryItem(
                             groupedEntry = GroupedEntry(entry, emptyList()),
-                            onClick = { openFile(context, entry.file) },
+                            onClick = {
+                                onEntryOpen(
+                                    context = context,
+                                    entry = entry,
+                                    onTextEdit = { file -> onNavigateToFullscreenEdit(file.absolutePath) },
+                                )
+                            },
                             onLongClick = { viewModel.selectEntryForAction(entry) },
                             onCommentClick = { /* no comments in detail view */ },
                         )

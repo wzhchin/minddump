@@ -9,13 +9,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.camera.CameraManager
+import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.ui.statistics.StatisticsScreen
 import com.chin.minddump.ui.theme.LocalAnimationDuration
+import java.io.File
 
 sealed class Screen(
     val route: String
@@ -24,7 +28,13 @@ sealed class Screen(
 
     data object Camera : Screen("camera")
 
-    data object FullscreenEdit : Screen("fullscreen_edit")
+    // entryPath query arg (Uri-encoded absolute path) selects edit mode;
+    // absent = new-entry mode.
+    data object FullscreenEdit : Screen("fullscreen_edit?entryPath={entryPath}") {
+        const val ROUTE_NO_ARG = "fullscreen_edit"
+
+        fun routeWithEntry(entryPath: String): String = "fullscreen_edit?entryPath=${android.net.Uri.encode(entryPath)}"
+    }
 
     data object Statistics : Screen("statistics")
 
@@ -84,7 +94,14 @@ fun MindDumpNavGraph(
                 viewModel = viewModel,
                 audioRecorder = audioRecorder,
                 onNavigateToCamera = { navController.navigate(Screen.Camera.route) },
-                onNavigateToFullscreenEdit = { navController.navigate(Screen.FullscreenEdit.route) },
+                onNavigateToFullscreenEdit = { entryPath ->
+                    val route = if (entryPath != null) {
+                        Screen.FullscreenEdit.routeWithEntry(entryPath)
+                    } else {
+                        Screen.FullscreenEdit.ROUTE_NO_ARG
+                    }
+                    navController.navigate(route)
+                },
                 onNavigateToStatistics = { navController.navigate(Screen.Statistics.route) },
                 onNavigateToGroupDetail = { navController.navigate(Screen.GroupDetail.route) },
             )
@@ -94,6 +111,14 @@ fun MindDumpNavGraph(
             GroupDetailScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
+                onNavigateToFullscreenEdit = { entryPath ->
+                    val route = if (entryPath != null) {
+                        Screen.FullscreenEdit.routeWithEntry(entryPath)
+                    } else {
+                        Screen.FullscreenEdit.ROUTE_NO_ARG
+                    }
+                    navController.navigate(route)
+                },
             )
         }
 
@@ -117,15 +142,44 @@ fun MindDumpNavGraph(
             )
         }
 
-        composable(Screen.FullscreenEdit.route) {
+        composable(
+            route = Screen.FullscreenEdit.route,
+            arguments = listOf(
+                navArgument("entryPath") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { backStackEntry ->
+            val entryPath = backStackEntry.arguments?.getString("entryPath")
+            // Resolve the entry from the current set; fall back to a bare File so
+            // editing still works for an entry that scrolled out of the loaded page.
+            val editEntry: MindDumpEntry? = entryPath?.let { path ->
+                uiState.entries.firstOrNull { it.file.absolutePath == path }
+                    ?: File(path).takeIf { it.exists() }?.let { file ->
+                        // Minimal entry: enough for load/save (path + identity).
+                        MindDumpEntry(
+                            file = file,
+                            type = com.chin.minddump.storage.EntryType.TEXT,
+                            space = uiState.currentSpace,
+                            monthFolder = file.parentFile?.name ?: "",
+                            timestamp = file.name.substringBefore('-'),
+                            role = com.chin.minddump.storage.EntryRole.FILE,
+                        )
+                    }
+            }
             FullscreenEditScreen(
-                text = uiState.inputText,
-                onTextChange = { viewModel.updateInputText(it) },
+                viewModel = viewModel,
+                editEntry = editEntry,
+                newEntryText = uiState.inputText,
+                onNewEntryTextChange = { viewModel.updateInputText(it) },
                 onClose = { navController.popBackStack() },
-                onSubmit = {
+                onSubmitNewEntry = {
                     viewModel.submitText()
                     navController.popBackStack()
                 },
+                onSavedEdit = { navController.popBackStack() },
             )
         }
 
