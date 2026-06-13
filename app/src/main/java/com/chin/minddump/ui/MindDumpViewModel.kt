@@ -8,6 +8,7 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chin.minddump.data.MindDumpRepository
+import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.ShareItem
 import com.chin.minddump.storage.Space
@@ -27,6 +28,14 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
+
+/**
+ * A file entry with its associated comments nested.
+ */
+data class GroupedEntry(
+    val entry: MindDumpEntry,
+    val comments: List<MindDumpEntry>,
+)
 
 data class MindDumpUiState(
     val currentSpace: Space = Space.PUBLIC,
@@ -55,9 +64,19 @@ data class MindDumpUiState(
     // Share intent
     val pendingShareItems: List<ShareItem>? = null,
     val shareError: String? = null,
+    // Entry actions
+    val selectedEntryForAction: MindDumpEntry? = null,
+    // Multi-select
+    val isMultiSelectMode: Boolean = false,
+    val selectedEntries: Set<MindDumpEntry> = emptySet(),
+    // Grouped entries (files + their comments)
+    val groupedEntries: List<GroupedEntry> = emptyList(),
+    // Group directories in the current month
+    val groups: List<File> = emptyList(),
 )
 
 @HiltViewModel
+@Suppress("TooManyFunctions")
 class MindDumpViewModel
     @Inject
     constructor(
@@ -101,7 +120,8 @@ class MindDumpViewModel
             // Sync entries from collection into uiState
             viewModelScope.launch {
                 entriesFlow.collect { entries ->
-                    _uiState.update { it.copy(entries = entries) }
+                    val grouped = groupEntriesWithComments(entries)
+                    _uiState.update { it.copy(entries = entries, groupedEntries = grouped) }
                 }
             }
 
@@ -204,7 +224,10 @@ class MindDumpViewModel
          */
         fun refreshEntries() {
             viewModelScope.launch(Dispatchers.IO) {
-                repository.reconcileWithDisk(_uiState.value.currentSpace)
+                val space = _uiState.value.currentSpace
+                repository.reconcileWithDisk(space)
+                val groups = repository.scanGroups(space)
+                _uiState.update { it.copy(groups = groups) }
             }
         }
 
@@ -389,10 +412,139 @@ class MindDumpViewModel
             _uiState.update { it.copy(shareError = null) }
         }
 
+        // --- Entry actions (drawer) ---
+
+        fun selectEntryForAction(entry: MindDumpEntry) {
+            _uiState.update { it.copy(selectedEntryForAction = entry) }
+        }
+
+        fun clearEntryAction() {
+            _uiState.update { it.copy(selectedEntryForAction = null) }
+        }
+
+        fun renameEntry(entry: MindDumpEntry, newName: String?) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.renameEntry(entry, newName)
+                refreshEntries()
+            }
+        }
+
+        fun moveToGroup(entry: MindDumpEntry, groupDir: File) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.moveToGroup(entry, groupDir)
+                refreshEntries()
+            }
+        }
+
+        fun createGroup(name: String?) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.createGroup(_uiState.value.currentSpace, name)
+                refreshEntries()
+            }
+        }
+
+        /**
+         * Create a new group and move the entry into it atomically.
+         */
+        fun createAndMoveToGroup(entry: MindDumpEntry, name: String?) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.createAndMoveToGroup(entry, _uiState.value.currentSpace, name)
+                refreshEntries()
+            }
+        }
+
+        fun moveEntryToSpace(entry: MindDumpEntry, targetSpace: Space) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.moveEntryToSpace(entry, targetSpace)
+                refreshEntries()
+            }
+        }
+
+        // --- Multi-select ---
+
+        fun enterMultiSelectMode(entry: MindDumpEntry) {
+            _uiState.update {
+                it.copy(
+                    isMultiSelectMode = true,
+                    selectedEntries = setOf(entry),
+                    selectedEntryForAction = null,
+                )
+            }
+        }
+
+        fun toggleEntrySelection(entry: MindDumpEntry) {
+            _uiState.update { state ->
+                val current = state.selectedEntries
+                val updated = if (entry in current) {
+                    current - entry
+                } else {
+                    current + entry
+                }
+                state.copy(
+                    selectedEntries = updated,
+                    isMultiSelectMode = updated.isNotEmpty(),
+                )
+            }
+        }
+
+        fun exitMultiSelectMode() {
+            _uiState.update {
+                it.copy(
+                    isMultiSelectMode = false,
+                    selectedEntries = emptySet(),
+                )
+            }
+        }
+
+        fun deleteSelectedEntries() {
+            val entries = _uiState.value.selectedEntries.toList()
+            viewModelScope.launch(Dispatchers.IO) {
+                entries.forEach { repository.deleteEntry(it) }
+                _uiState.update {
+                    it.copy(
+                        isMultiSelectMode = false,
+                        selectedEntries = emptySet(),
+                    )
+                }
+            }
+        }
+
         /**
          * Whether the Private space session is currently unlocked.
          */
         fun isSessionUnlocked(): Boolean = repository.isSessionUnlocked()
+
+        /**
+         * Group entries with their comments.
+         * Comments (role=N) are nested under their target entry (matched by targetTimestamp).
+         * Orphan comments (no matching target) appear as standalone entries.
+         */
+        private fun groupEntriesWithComments(entries: List<MindDumpEntry>): List<GroupedEntry> {
+            val files = entries.filter { it.role == EntryRole.FILE }
+            val comments = entries.filter { it.role == EntryRole.COMMENT }
+
+            // Build a map of timestamp → file entry for quick lookup
+            val result = mutableListOf<GroupedEntry>()
+            val matchedComments = mutableSetOf<MindDumpEntry>()
+
+            // For each file, find its comments
+            for (file in files) {
+                val fileComments = comments.filter {
+                    it.targetTimestamp == file.timestamp && it !in matchedComments
+                }
+                matchedComments.addAll(fileComments)
+                result.add(GroupedEntry(entry = file, comments = fileComments))
+            }
+
+            // Orphan comments (no matching target file)
+            for (comment in comments) {
+                if (comment !in matchedComments) {
+                    result.add(GroupedEntry(entry = comment, comments = emptyList()))
+                }
+            }
+
+            return result
+        }
 
         // --- Work directory ---
 

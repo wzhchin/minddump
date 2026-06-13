@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.data.DayCount
 import com.chin.minddump.ui.theme.LocalExpressiveShapes
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -131,20 +130,20 @@ fun TrendChart(
                 .padding(top = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            data.firstOrNull()?.dateFolder?.let {
-                Text(formatShortDate(it), style = MaterialTheme.typography.labelSmall, color = onSurfaceVariant)
+            data.firstOrNull()?.monthFolder?.let {
+                Text(formatShortMonth(it), style = MaterialTheme.typography.labelSmall, color = onSurfaceVariant)
             }
-            data.lastOrNull()?.dateFolder?.let {
-                Text(formatShortDate(it), style = MaterialTheme.typography.labelSmall, color = onSurfaceVariant)
+            data.lastOrNull()?.monthFolder?.let {
+                Text(formatShortMonth(it), style = MaterialTheme.typography.labelSmall, color = onSurfaceVariant)
             }
         }
     }
 }
 
-private fun formatShortDate(dateStr: String): String = try {
-    val date = LocalDate.parse(dateStr)
-    val formatter = DateTimeFormatter.ofPattern("M/d")
-    date.format(formatter)
+private fun formatShortMonth(monthStr: String): String = try {
+    val yearMonth = java.time.YearMonth.parse(monthStr)
+    val formatter = DateTimeFormatter.ofPattern("M月")
+    yearMonth.format(formatter)
 } catch (_: Exception) {
-    dateStr
+    monthStr
 }

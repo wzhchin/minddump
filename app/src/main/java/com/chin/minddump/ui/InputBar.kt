@@ -90,6 +90,7 @@ sealed interface InputBarState {
     data object Sending : InputBarState
 }
 
+@Suppress("LongMethod")
 @Composable
 fun InputBar(
     inputText: String,

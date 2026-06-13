@@ -29,7 +29,7 @@ class MindDumpViewModelTest {
         every { mockRepository.isWorkDirConfigured() } returns true
         every { mockRepository.hasPrivatePassword() } returns false
         every { mockRepository.isSessionUnlocked() } returns false
-        coEvery { mockRepository.refreshFromDisk(any()) } returns Unit
+        coEvery { mockRepository.reconcileWithDisk(any()) } returns Unit
         val testDispatcher = StandardTestDispatcher()
         testScope = TestScope(testDispatcher)
         kotlinx.coroutines.Dispatchers.setMain(testDispatcher)
@@ -40,7 +40,7 @@ class MindDumpViewModelTest {
         kotlinx.coroutines.Dispatchers.resetMain()
     }
 
-    private fun createViewModel(): MindDumpViewModel = MindDumpViewModel(mockRepository)
+    private fun createViewModel(): MindDumpViewModel = MindDumpViewModel(mockRepository, mockk(relaxed = true))
 
     @Test
     fun `initial state is Public and not dark theme`() {

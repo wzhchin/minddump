@@ -67,45 +67,49 @@ class StatisticsViewModel
             return dayCounts
                 .filter {
                     try {
-                        LocalDate.parse(it.dateFolder) >= cutoff
+                        // monthFolder is YYYY-MM, parse as year-month for comparison
+                        val yearMonth = java.time.YearMonth.parse(it.monthFolder)
+                        val firstOfMonth = yearMonth.atDay(1)
+                        firstOfMonth >= cutoff
                     } catch (_: Exception) {
                         false
                     }
-                }.map { DayCount(it.dateFolder, it.count) }
+                }.map { DayCount(it.monthFolder, it.count) }
         }
 
         /**
-         * Compute current streak and longest streak from day counts.
-         * Streak = consecutive days with at least 1 entry.
+         * Compute current streak and longest streak from month counts.
+         * Streak = consecutive months with at least 1 entry.
          */
         private fun computeStreaks(dayCounts: List<DayCount>): Pair<Int, Int> {
-            val datesWithEntries = dayCounts
+            val monthsWithEntries = dayCounts
                 .filter { it.count > 0 }
                 .mapNotNull {
                     try {
-                        LocalDate.parse(it.dateFolder)
+                        java.time.YearMonth.parse(it.monthFolder)
                     } catch (_: Exception) {
                         null
                     }
                 }.sortedDescending()
                 .toSet()
 
-            if (datesWithEntries.isEmpty()) return Pair(0, 0)
+            if (monthsWithEntries.isEmpty()) return Pair(0, 0)
 
-            // Current streak: count backwards from today
+            // Current streak: count backwards from current month
             var currentStreak = 0
-            var checkDate = LocalDate.now()
-            while (checkDate in datesWithEntries) {
+            var checkMonth = java.time.YearMonth.now()
+            while (checkMonth in monthsWithEntries) {
                 currentStreak++
-                checkDate = checkDate.minusDays(1)
+                checkMonth = checkMonth.minusMonths(1)
             }
 
             // Longest streak: find max consecutive run
-            val sortedDates = datesWithEntries.sorted()
+            val sortedMonths = monthsWithEntries.sorted()
             var longestStreak = 1
             var runLength = 1
-            for (i in 1 until sortedDates.size) {
-                if (ChronoUnit.DAYS.between(sortedDates[i - 1], sortedDates[i]) == 1L) {
+            for (i in 1 until sortedMonths.size) {
+                if (java.time.temporal.ChronoUnit.MONTHS
+                        .between(sortedMonths[i - 1], sortedMonths[i]) == 1L) {
                     runLength++
                     longestStreak = maxOf(longestStreak, runLength)
                 } else {

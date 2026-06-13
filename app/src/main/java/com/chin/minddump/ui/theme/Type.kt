@@ -21,9 +21,7 @@ import com.chin.minddump.R
  * - wdth (width): 75–125 (wider for display text)
  * - ROND (roundness): 0–100 (100 = fully rounded for M3 Expressive)
  * - GRAD (grade): -50 to 150
- */
-
-/**
+ *
  * Static FontFamily with ROND=100 (fully rounded) and wider display text.
  * Used for the default app typography.
  */

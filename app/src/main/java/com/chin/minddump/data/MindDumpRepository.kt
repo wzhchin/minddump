@@ -3,7 +3,9 @@ package com.chin.minddump.data
 import android.net.Uri
 import com.chin.minddump.security.CryptoEngine
 import com.chin.minddump.security.PasswordStore
+import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
+import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.FileStorageEngine
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
@@ -17,6 +19,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
+@Suppress("TooManyFunctions")
 class MindDumpRepository
     @Inject
     constructor(
@@ -85,25 +88,22 @@ class MindDumpRepository
             }
 
         /**
-         * Save a text entry: write file + insert Room row.
-         * Encrypts if Private space.
+         * Save a text entry: write file + encrypt if Private + insert Room row.
          */
         suspend fun saveTextEntry(space: Space, content: String): MindDumpEntry =
             withContext(Dispatchers.IO) {
                 Timber.d("Saving text entry in %s space", space.name)
                 val file = storageEngine.saveTextEntry(space, content)
-                val isEncrypted = space == Space.PRIVATE && sessionPassword != null
-                val finalFile = if (isEncrypted) {
-                    encryptFile(file, sessionPassword!!)
-                } else {
-                    file
-                }
+                val finalFile = encryptIfNeeded(file, space)
+                val meta = FileMetadata.fromFile(finalFile)!!
+                val isEncrypted = meta.isEncrypted
                 val entry = MindDumpEntry(
                     file = finalFile,
-                    type = EntryType.TEXT,
+                    type = meta.entryType,
                     space = space,
-                    dateFolder = finalFile.parentFile?.name ?: "",
-                    timestamp = extractTimestamp(finalFile.name),
+                    monthFolder = finalFile.parentFile?.name ?: "",
+                    timestamp = meta.timestamp,
+                    role = EntryRole.FILE,
                 )
                 dao.insert(
                     entry.toEntity(
@@ -138,44 +138,171 @@ class MindDumpRepository
          */
         suspend fun registerMediaFile(file: File, space: Space) =
             withContext(Dispatchers.IO) {
-                val isEncrypted = space == Space.PRIVATE && sessionPassword != null
-                val finalFile = if (isEncrypted) {
-                    encryptFile(file, sessionPassword!!)
-                } else {
-                    file
-                }
+                val finalFile = encryptIfNeeded(file, space)
+                val meta = FileMetadata.fromFile(finalFile)!!
+                val isEncrypted = meta.isEncrypted
                 val entry = MindDumpEntry(
                     file = finalFile,
-                    type = EntryType.fromFileName(file.name),
+                    type = meta.entryType,
                     space = space,
-                    dateFolder = finalFile.parentFile?.name ?: "",
-                    timestamp = extractTimestamp(file.name),
+                    monthFolder = finalFile.parentFile?.name ?: "",
+                    timestamp = meta.timestamp,
+                    role = EntryRole.FILE,
                 )
                 dao.insert(entry.toEntity(isEncrypted = isEncrypted))
             }
 
         /**
-         * Import a file: copy + insert Room row.
-         * Encrypts if Private space.
+         * Import a file: copy + encrypt if Private + insert Room row.
          */
         suspend fun importFile(space: Space, uri: Uri, fileName: String): MindDumpEntry =
             withContext(Dispatchers.IO) {
                 val file = storageEngine.importFile(space, uri, fileName)
-                val isEncrypted = space == Space.PRIVATE && sessionPassword != null
-                val finalFile = if (isEncrypted) {
-                    encryptFile(file, sessionPassword!!)
-                } else {
-                    file
-                }
+                val finalFile = encryptIfNeeded(file, space)
+                val meta = FileMetadata.fromFile(finalFile)!!
+                val isEncrypted = meta.isEncrypted
                 val entry = MindDumpEntry(
                     file = finalFile,
-                    type = EntryType.fromFileName(file.name),
+                    type = meta.entryType,
                     space = space,
-                    dateFolder = finalFile.parentFile?.name ?: "",
-                    timestamp = extractTimestamp(file.name),
+                    monthFolder = finalFile.parentFile?.name ?: "",
+                    timestamp = meta.timestamp,
+                    role = EntryRole.FILE,
                 )
                 dao.insert(entry.toEntity(isEncrypted = isEncrypted))
                 entry
+            }
+
+        /**
+         * Save a comment targeting a specific entry.
+         */
+        suspend fun saveComment(
+            space: Space,
+            targetEntry: MindDumpEntry,
+            content: String,
+        ): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val targetDir = targetEntry.file.parentFile ?: error("Target entry has no parent directory")
+                val file = storageEngine.saveComment(targetDir, targetEntry.timestamp, content)
+                val finalFile = encryptIfNeeded(file, space)
+                val meta = FileMetadata.fromFile(finalFile)!!
+                val isEncrypted = meta.isEncrypted
+                val entry = MindDumpEntry(
+                    file = finalFile,
+                    type = meta.entryType,
+                    space = space,
+                    monthFolder = finalFile.parentFile?.name ?: "",
+                    timestamp = meta.timestamp,
+                    role = EntryRole.COMMENT,
+                    targetTimestamp = targetEntry.timestamp,
+                    groupPath = targetEntry.groupPath,
+                )
+                dao.insert(
+                    entry.toEntity(
+                        contentPreview = content.take(500),
+                        isEncrypted = isEncrypted,
+                    ),
+                )
+                entry
+            }
+
+        /**
+         * Create a new group and return its directory.
+         */
+        suspend fun createGroup(space: Space, name: String?): File =
+            withContext(Dispatchers.IO) {
+                storageEngine.createGroup(space, name)
+            }
+
+        /**
+         * Create a group and move an entry into it in one operation.
+         */
+        suspend fun createAndMoveToGroup(entry: MindDumpEntry, space: Space, name: String?): File =
+            withContext(Dispatchers.IO) {
+                val groupDir = storageEngine.createGroup(space, name)
+                moveToGroup(entry, groupDir)
+                groupDir
+            }
+
+        /**
+         * Move an entry into a group directory.
+         */
+        suspend fun moveToGroup(entry: MindDumpEntry, groupDir: File) =
+            withContext(Dispatchers.IO) {
+                val newFile = storageEngine.moveToGroup(entry.file, groupDir)
+                val meta = FileMetadata.fromFile(newFile)!!
+                val updatedEntry = entry.copy(
+                    file = newFile,
+                    groupPath = groupDir.absolutePath,
+                )
+                dao.deleteByPath(entry.file.absolutePath)
+                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+            }
+
+        /**
+         * Move an entry out of its group back to the month directory.
+         */
+        suspend fun moveOutOfGroup(entry: MindDumpEntry, space: Space) =
+            withContext(Dispatchers.IO) {
+                val newFile = storageEngine.moveOutOfGroup(entry.file, space)
+                val updatedEntry = entry.copy(
+                    file = newFile,
+                    groupPath = null,
+                )
+                val meta = FileMetadata.fromFile(newFile)!!
+                dao.deleteByPath(entry.file.absolutePath)
+                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+            }
+
+        /**
+         * Move an entry between Public and Private spaces.
+         * Handles encrypt/decrypt as needed.
+         */
+        suspend fun moveEntryToSpace(entry: MindDumpEntry, targetSpace: Space) =
+            withContext(Dispatchers.IO) {
+                // Decrypt if currently encrypted
+                var workingFile = entry.file
+                if (cryptoEngine.isEncryptedFile(entry.file)) {
+                    val password = sessionPassword ?: error("Session not unlocked")
+                    val tempFile = File(storageEngine.getRootDir(), ".cache/${entry.file.nameWithoutExtension}")
+                    if (!tempFile.parentFile?.exists()!!) tempFile.parentFile?.mkdirs()
+                    cryptoEngine.decryptFile(entry.file, tempFile, password)
+                    entry.file.delete()
+                    workingFile = tempFile
+                }
+
+                // Move to target space directory
+                val newFile = storageEngine.moveBetweenSpaces(workingFile, targetSpace)
+
+                // Encrypt if target is Private and password is set
+                val finalFile = if (targetSpace == Space.PRIVATE && sessionPassword != null) {
+                    encryptFile(newFile, sessionPassword!!)
+                } else {
+                    newFile
+                }
+
+                val meta = FileMetadata.fromFile(finalFile)!!
+                val updatedEntry = entry.copy(
+                    file = finalFile,
+                    space = targetSpace,
+                    monthFolder = finalFile.parentFile?.name ?: "",
+                    groupPath = null, // Moving between spaces leaves group
+                )
+                dao.deleteByPath(entry.file.absolutePath)
+                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+            }
+
+        /**
+         * Rename the originalName portion of an entry's file.
+         */
+        suspend fun renameEntry(entry: MindDumpEntry, newName: String?): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val newFile = storageEngine.renameEntry(entry.file, newName)
+                val meta = FileMetadata.fromFile(newFile)!!
+                val updatedEntry = entry.copy(file = newFile)
+                dao.deleteByPath(entry.file.absolutePath)
+                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+                updatedEntry
             }
 
         /**
@@ -213,9 +340,7 @@ class MindDumpRepository
 
         /**
          * Bidirectional reconcile: sync Room with actual filesystem state.
-         * - Disk has & DB doesn't → insert
-         * - DB has & Disk doesn't → delete orphan
-         * - Both have but stale → update contentPreview / lastModified
+         * Derives role, targetTimestamp, groupPath from disk using FileMetadata.
          */
         suspend fun reconcileWithDisk(space: Space) =
             withContext(Dispatchers.IO) {
@@ -230,17 +355,18 @@ class MindDumpRepository
                 if (toInsert.isNotEmpty()) {
                     dao.insertAll(
                         toInsert.map { entry ->
-                            val preview = if (entry.type == EntryType.TEXT) {
-                                try {
-                                    entry.file.readText().take(500)
-                                } catch (_: Exception) {
-                                    ""
-                                }
-                            } else {
-                                ""
-                            }
+                            val preview = contentPreviewOf(entry)
                             val isEncrypted = cryptoEngine.isEncryptedFile(entry.file)
-                            entry.toEntity(contentPreview = preview, isEncrypted = isEncrypted)
+                            // Derive targetTimestamp for comments from disk
+                            val targetTs = if (entry.role == EntryRole.COMMENT) {
+                                entry.timestamp // Already set by scanEntries
+                            } else {
+                                null
+                            }
+                            entry.copy(targetTimestamp = targetTs).toEntity(
+                                contentPreview = preview,
+                                isEncrypted = isEncrypted,
+                            )
                         },
                     )
                 }
@@ -260,9 +386,11 @@ class MindDumpRepository
                         dbEntity.lastModified != diskEntry.file.lastModified()
                     }.map { dbEntity ->
                         val diskEntry = diskPathMap[dbEntity.filePath]!!
-                        val preview = if (dbEntity.type == EntryType.TEXT) {
+                        val preview = if (diskEntry.type == EntryType.TEXT) {
                             try {
-                                diskEntry.file.readText().take(500)
+                                // For encrypted files, skip preview extraction
+                                if (cryptoEngine.isEncryptedFile(diskEntry.file)) ""
+                                else diskEntry.file.readText().take(500)
                             } catch (_: Exception) {
                                 ""
                             }
@@ -273,6 +401,8 @@ class MindDumpRepository
                             lastModified = diskEntry.file.lastModified(),
                             contentPreview = preview,
                             isEncrypted = cryptoEngine.isEncryptedFile(diskEntry.file),
+                            groupPath = diskEntry.groupPath,
+                            targetTimestamp = diskEntry.targetTimestamp,
                         )
                     }
                 if (toUpdate.isNotEmpty()) {
@@ -287,6 +417,12 @@ class MindDumpRepository
                     toUpdate.size,
                 )
             }
+
+        /**
+         * Scan group directories for a given space.
+         */
+        fun scanGroups(space: Space): List<File> =
+            storageEngine.scanGroups(space)
 
         // --- Work directory delegation ---
 
@@ -333,9 +469,19 @@ class MindDumpRepository
             return encryptedFile
         }
 
-        private fun extractTimestamp(fileName: String): String {
-            val cleanName = fileName.removeSuffix(".enc")
-            val parts = cleanName.split("_")
-            return if (parts.size >= 2) parts[1] else ""
+        private fun encryptIfNeeded(file: File, space: Space): File {
+            if (space != Space.PRIVATE || sessionPassword == null) return file
+            return encryptFile(file, sessionPassword!!)
         }
+
+        private fun contentPreviewOf(entry: MindDumpEntry): String =
+            if (entry.type == EntryType.TEXT && !cryptoEngine.isEncryptedFile(entry.file)) {
+                try {
+                    entry.file.readText().take(500)
+                } catch (_: Exception) {
+                    ""
+                }
+            } else {
+                ""
+            }
     }

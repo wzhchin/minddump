@@ -40,20 +40,19 @@ class FileStorageEngineTest {
 
     @Test
     fun `scanEntries returns entries sorted by lastModified newest first`() {
-        // Create files with different timestamps
-        val dateDir = File(rootDir, "Public/2024-01-01").also { it.mkdirs() }
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
         val file1 =
-            File(dateDir, "文字_010000.md").also {
+            File(monthDir, "2401-01-010000-f.md").also {
                 it.writeText("first")
                 it.setLastModified(1000)
             }
         val file2 =
-            File(dateDir, "文字_020000.md").also {
+            File(monthDir, "2401-01-020000-f.md").also {
                 it.writeText("second")
                 it.setLastModified(2000)
             }
         val file3 =
-            File(dateDir, "文字_030000.md").also {
+            File(monthDir, "2401-01-030000-f.md").also {
                 it.writeText("third")
                 it.setLastModified(500)
             }
@@ -66,33 +65,43 @@ class FileStorageEngineTest {
     }
 
     @Test
-    fun `scanEntries detects correct entry types`() {
-        val dateDir = File(rootDir, "Public/2024-01-01").also { it.mkdirs() }
-        File(dateDir, "文字_010000.md").writeText("text")
-        File(dateDir, "录音_020000.m4a").writeText("audio")
-        File(dateDir, "拍照_030000.jpg").writeText("photo")
-        File(dateDir, "视频_040000.mp4").writeText("video")
-        File(dateDir, "文件_050000_doc.pdf").writeText("file")
-        File(dateDir, "random.txt").writeText("unknown")
+    fun `scanEntries detects correct entry types by extension`() {
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        File(monthDir, "2401-01-010000-f.md").writeText("text")
+        File(monthDir, "2401-01-020000-f.m4a").writeText("audio")
+        File(monthDir, "2401-01-030000-f.jpg").writeText("photo")
+        File(monthDir, "2401-01-040000-f.mp4").writeText("video")
+        File(monthDir, "2401-01-050000-f-report.pdf").writeText("file")
 
         val entries = engine.scanEntries(Space.PUBLIC)
-        assertEquals(6, entries.size)
+        assertEquals(5, entries.size)
 
-        val types = entries.map { it.type }.toSet()
-        assertTrue(types.contains(EntryType.TEXT))
-        assertTrue(types.contains(EntryType.RECORDING))
-        assertTrue(types.contains(EntryType.PHOTO))
-        assertTrue(types.contains(EntryType.VIDEO))
-        assertTrue(types.contains(EntryType.FILE))
-        assertTrue(types.contains(EntryType.UNKNOWN))
+        val byName = entries.associateBy { it.file.name }
+        assertEquals(EntryType.TEXT, byName["2401-01-010000-f.md"]?.type)
+        assertEquals(EntryType.RECORDING, byName["2401-01-020000-f.m4a"]?.type)
+        assertEquals(EntryType.PHOTO, byName["2401-01-030000-f.jpg"]?.type)
+        assertEquals(EntryType.VIDEO, byName["2401-01-040000-f.mp4"]?.type)
+        assertEquals(EntryType.FILE, byName["2401-01-050000-f-report.pdf"]?.type)
+    }
+
+    @Test
+    fun `scanEntries skips non-MindDump files`() {
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        File(monthDir, "2401-01-010000-f.md").writeText("valid")
+        File(monthDir, "readme.txt").writeText("skip me")
+        File(monthDir, "文字_010000.md").writeText("old format")
+
+        val entries = engine.scanEntries(Space.PUBLIC)
+        assertEquals(1, entries.size)
+        assertEquals("2401-01-010000-f.md", entries[0].file.name)
     }
 
     @Test
     fun `scanEntries ignores Private when scanning Public`() {
-        val pubDir = File(rootDir, "Public/2024-01-01").also { it.mkdirs() }
-        val privDir = File(rootDir, "Private/2024-01-01").also { it.mkdirs() }
-        File(pubDir, "文字_010000.md").writeText("public note")
-        File(privDir, "文字_020000.md").writeText("private note")
+        val pubDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        val privDir = File(rootDir, "Private/2024-01").also { it.mkdirs() }
+        File(pubDir, "2401-01-010000-f.md").writeText("public note")
+        File(privDir, "2401-01-020000-f.md").writeText("private note")
 
         val entries = engine.scanEntries(Space.PUBLIC)
         assertEquals(1, entries.size)
@@ -105,9 +114,9 @@ class FileStorageEngineTest {
 
         assertTrue(file.exists())
         assertEquals("Hello world", file.readText())
-        assertTrue(file.name.startsWith("文字_"))
+        assertTrue(file.name.contains("-f."))
         assertTrue(file.name.endsWith(".md"))
-        // File should be under Public/YYYY-MM-DD/
+        // File should be under Public/YYYY-MM/
         assertTrue(file.parentFile?.parentFile?.name == "Public")
     }
 
@@ -115,7 +124,7 @@ class FileStorageEngineTest {
     fun `getRecordingFile returns m4a file in correct directory`() {
         val file = engine.getRecordingFile(Space.PRIVATE)
 
-        assertTrue(file.name.startsWith("录音_"))
+        assertTrue(file.name.contains("-f."))
         assertTrue(file.name.endsWith(".m4a"))
         assertTrue(file.parentFile?.parentFile?.name == "Private")
     }
@@ -124,7 +133,7 @@ class FileStorageEngineTest {
     fun `getPhotoFile returns jpg file in correct directory`() {
         val file = engine.getPhotoFile(Space.PUBLIC)
 
-        assertTrue(file.name.startsWith("拍照_"))
+        assertTrue(file.name.contains("-f."))
         assertTrue(file.name.endsWith(".jpg"))
     }
 
@@ -132,7 +141,7 @@ class FileStorageEngineTest {
     fun `getVideoFile returns mp4 file in correct directory`() {
         val file = engine.getVideoFile(Space.PUBLIC)
 
-        assertTrue(file.name.startsWith("视频_"))
+        assertTrue(file.name.contains("-f."))
         assertTrue(file.name.endsWith(".mp4"))
     }
 
@@ -144,8 +153,8 @@ class FileStorageEngineTest {
                 file = file,
                 type = EntryType.TEXT,
                 space = Space.PUBLIC,
-                dateFolder = file.parentFile!!.name,
-                timestamp = "000000",
+                monthFolder = file.parentFile!!.name,
+                timestamp = "2401-01-010000",
             )
 
         val result = engine.deleteEntry(entry)
@@ -156,38 +165,82 @@ class FileStorageEngineTest {
 
     @Test
     fun `countFiles returns total file count recursively`() {
-        val dateDir = File(rootDir, "Public/2024-01-01").also { it.mkdirs() }
-        File(dateDir, "文字_010000.md").writeText("a")
-        File(dateDir, "文字_020000.md").writeText("b")
-        val dateDir2 = File(rootDir, "Private/2024-01-02").also { it.mkdirs() }
-        File(dateDir2, "文字_030000.md").writeText("c")
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        File(monthDir, "2401-01-010000-f.md").writeText("a")
+        File(monthDir, "2401-01-020000-f.md").writeText("b")
+        val monthDir2 = File(rootDir, "Private/2024-01").also { it.mkdirs() }
+        File(monthDir2, "2401-01-030000-f.md").writeText("c")
 
         assertEquals(3, engine.countFiles())
     }
 
     @Test
     fun `countFiles returns 0 for non-existent directory`() {
-        val engineWithEmpty = engine
         rootDir.deleteRecursively()
-        assertEquals(0, engineWithEmpty.countFiles())
+        assertEquals(0, engine.countFiles())
+    }
+
+    @Test
+    fun `createGroup creates directory with correct naming`() {
+        val groupDir = engine.createGroup(Space.PUBLIC, "travel")
+        assertTrue(groupDir.exists())
+        assertTrue(groupDir.isDirectory)
+        assertTrue(groupDir.name.contains("-g-travel"))
+        assertTrue(groupDir.parentFile?.parentFile?.name == "Public")
+    }
+
+    @Test
+    fun `createGroup creates anonymous group`() {
+        val groupDir = engine.createGroup(Space.PUBLIC, null)
+        assertTrue(groupDir.exists())
+        assertTrue(groupDir.name.endsWith("-g"))
+    }
+
+    @Test
+    fun `moveToGroup moves file into group directory`() {
+        val file = engine.saveTextEntry(Space.PUBLIC, "group me")
+        val groupDir = engine.createGroup(Space.PUBLIC, null)
+
+        val moved = engine.moveToGroup(file, groupDir)
+        assertTrue(moved.exists())
+        assertEquals(moved.parentFile, groupDir)
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun `saveComment creates file with correct naming`() {
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        File(monthDir, "2401-01-010000-f.md").also { it.writeText("target") }
+
+        val comment = engine.saveComment(monthDir, "2401-01-010000", "a comment")
+        assertTrue(comment.exists())
+        assertTrue(comment.name.startsWith("2401-01-010000-n-"))
+        assertTrue(comment.name.endsWith(".md"))
+        assertEquals("a comment", comment.readText())
+    }
+
+    @Test
+    fun `renameEntry changes originalName portion`() {
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        val file = File(monthDir, "2401-01-010000-f-oldname.pdf").also { it.writeText("data") }
+
+        val renamed = engine.renameEntry(file, "newname")
+        assertTrue(renamed.name.contains("-f-newname."))
+        assertTrue(renamed.exists())
+        assertFalse(file.exists())
     }
 
     @Test
     fun `migrateTo copies files and deletes original`() {
-        // Create original structure
-        val dateDir = File(rootDir, "Public/2024-01-01").also { it.mkdirs() }
-        File(dateDir, "文字_010000.md").writeText("migrate me")
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        File(monthDir, "2401-01-010000-f.md").writeText("migrate me")
 
-        // Migrate to new location
         val newRoot = tempFolder.newFolder("NewMindDump")
         engine.migrateTo(newRoot)
 
-        // Check new location has the files
-        val newFile = File(newRoot, "Public/2024-01-01/文字_010000.md")
+        val newFile = File(newRoot, "Public/2024-01/2401-01-010000-f.md")
         assertTrue(newFile.exists())
         assertEquals("migrate me", newFile.readText())
-
-        // Check original is gone
         assertFalse(File(rootDir, "Public").exists())
     }
 }

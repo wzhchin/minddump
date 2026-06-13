@@ -48,7 +48,7 @@ fun CalendarHeatmap(
 
     // Build a map of date -> count for quick lookup
     val countMap = remember(dayCounts) {
-        dayCounts.associate { it.dateFolder to it.count }
+        dayCounts.associate { it.monthFolder to it.count }
     }
 
     val monthLabel = remember(currentMonth) {

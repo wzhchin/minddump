@@ -7,5 +7,5 @@ import androidx.room.Fts4
 @Entity(tableName = "entries_fts")
 data class EntryFts(
     val contentPreview: String,
-    val dateFolder: String,
+    val monthFolder: String,
 )

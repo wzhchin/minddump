@@ -3,6 +3,7 @@ package com.chin.minddump.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
@@ -12,8 +13,9 @@ import java.io.File
     tableName = "entries",
     indices = [
         Index(value = ["filePath"], unique = true),
-        Index(value = ["space", "dateFolder"]),
+        Index(value = ["space", "monthFolder"]),
         Index(value = ["space", "type"]),
+        Index(value = ["space", "role"]),
     ],
 )
 data class EntryEntity(
@@ -22,11 +24,14 @@ data class EntryEntity(
     val filePath: String,
     val type: EntryType,
     val space: Space,
-    val dateFolder: String,
+    val monthFolder: String,
     val timestamp: String,
     val contentPreview: String,
     val lastModified: Long,
     val isEncrypted: Boolean = false,
+    val role: EntryRole = EntryRole.FILE,
+    val targetTimestamp: String? = null,
+    val groupPath: String? = null,
 )
 
 fun EntryEntity.toEntry(): MindDumpEntry =
@@ -34,8 +39,11 @@ fun EntryEntity.toEntry(): MindDumpEntry =
         file = File(filePath),
         type = type,
         space = space,
-        dateFolder = dateFolder,
+        monthFolder = monthFolder,
         timestamp = timestamp,
+        role = role,
+        targetTimestamp = targetTimestamp,
+        groupPath = groupPath,
     )
 
 fun MindDumpEntry.toEntity(contentPreview: String = "", isEncrypted: Boolean = false): EntryEntity =
@@ -43,9 +51,12 @@ fun MindDumpEntry.toEntity(contentPreview: String = "", isEncrypted: Boolean = f
         filePath = file.absolutePath,
         type = type,
         space = space,
-        dateFolder = dateFolder,
+        monthFolder = monthFolder,
         timestamp = timestamp,
         contentPreview = contentPreview,
         lastModified = file.lastModified(),
         isEncrypted = isEncrypted,
+        role = role,
+        targetTimestamp = targetTimestamp,
+        groupPath = groupPath,
     )

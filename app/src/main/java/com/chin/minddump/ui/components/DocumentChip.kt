@@ -85,6 +85,7 @@ fun DocumentChip(
 /**
  * Returns appropriate icon based on file extension and MIME type.
  */
+@Suppress("CyclomaticComplexMethod")
 private fun getFileIcon(fileName: String, mimeType: String?): ImageVector {
     val extension = fileName.substringAfterLast('.', "").lowercase()
 

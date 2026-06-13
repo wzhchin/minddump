@@ -37,7 +37,6 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -60,8 +59,9 @@ import com.chin.minddump.R
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.ui.components.BiometricGate
-import com.chin.minddump.ui.components.DeleteConfirmDialog
+import com.chin.minddump.ui.components.EntryActionDrawer
 import com.chin.minddump.ui.components.MigrationDialog
+import com.chin.minddump.ui.components.MultiSelectActionBar
 import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.SettingsDialog
@@ -74,6 +74,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
 fun MainScreen(
     viewModel: MindDumpViewModel = viewModel(),
@@ -89,6 +90,7 @@ fun MainScreen(
     val haptics = rememberPremiumHaptics()
     val scope = rememberCoroutineScope()
 
+    @Suppress("UnusedPrivateProperty")
     var entryToDelete by remember { mutableStateOf<MindDumpEntry?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -289,36 +291,64 @@ fun MainScreen(
                 ) {
                     // Entry list
                     Box(modifier = Modifier.fillMaxSize()) {
+                        if (uiState.isMultiSelectMode) {
+                            MultiSelectActionBar(
+                                selectedCount = uiState.selectedEntries.size,
+                                onDelete = { viewModel.deleteSelectedEntries() },
+                                onClearSelection = { viewModel.exitMultiSelectMode() },
+                                onDone = { viewModel.exitMultiSelectMode() },
+                            )
+                        }
                         EntryList(
                             entries = uiState.entries,
-                            onEntryClick = { openFile(context, it.file) },
-                            onEntryLongClick = { entryToDelete = it },
+                            onEntryClick = { entry ->
+                                if (uiState.isMultiSelectMode) {
+                                    viewModel.toggleEntrySelection(entry)
+                                } else {
+                                    openFile(context, entry.file)
+                                }
+                            },
+                            onEntryLongClick = { entry ->
+                                if (uiState.isMultiSelectMode) {
+                                    viewModel.toggleEntrySelection(entry)
+                                } else {
+                                    viewModel.selectEntryForAction(entry)
+                                }
+                            },
                             modifier = Modifier.fillMaxSize(),
+                            isMultiSelectMode = uiState.isMultiSelectMode,
+                            selectedEntries = uiState.selectedEntries,
+                            groupedEntries = uiState.groupedEntries,
                         )
                     }
                 }
             }
 
             // --- Dialogs ---
-            entryToDelete?.let { entry ->
-                DeleteConfirmDialog(
+            uiState.selectedEntryForAction?.let { entry ->
+                EntryActionDrawer(
                     entry = entry,
-                    onConfirm = {
-                        viewModel.deleteEntry(entry)
-                        entryToDelete = null
-                        // Show undo snackbar
-                        scope.launch {
-                            val result = snackbarHostState.showSnackbar(
-                                message = context.getString(R.string.delete_confirm),
-                                actionLabel = context.getString(R.string.cancel),
-                                duration = SnackbarDuration.Short,
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                // Note: undo is a future enhancement — entry is already deleted
-                            }
-                        }
+                    currentSpace = uiState.currentSpace,
+                    groups = uiState.groups,
+                    onRename = { newName ->
+                        viewModel.renameEntry(entry, newName)
                     },
-                    onDismiss = { entryToDelete = null },
+                    onDelete = {
+                        viewModel.deleteEntry(entry)
+                    },
+                    onMultiSelect = {
+                        viewModel.enterMultiSelectMode(entry)
+                    },
+                    onMoveToGroup = { groupDir ->
+                        viewModel.moveToGroup(entry, groupDir)
+                    },
+                    onCreateGroup = { name ->
+                        viewModel.createAndMoveToGroup(entry, name)
+                    },
+                    onMoveToSpace = { targetSpace ->
+                        viewModel.moveEntryToSpace(entry, targetSpace)
+                    },
+                    onDismiss = { viewModel.clearEntryAction() },
                 )
             }
 

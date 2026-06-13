@@ -92,5 +92,6 @@ class CryptoEngine {
     /**
      * Check if a file appears to be encrypted (has the right header size).
      */
-    fun isEncryptedFile(file: File): Boolean = file.exists() && file.length() > SALT_LENGTH + IV_LENGTH && file.name.endsWith(".enc")
+    fun isEncryptedFile(file: File): Boolean =
+        file.exists() && file.length() > SALT_LENGTH + IV_LENGTH && file.name.endsWith(".enc")
 }
