@@ -208,6 +208,51 @@ class FileStorageEngineTest {
     }
 
     @Test
+    fun `dissolveGroup moves members back to month dir and deletes the directory`() {
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        val groupDir = File(monthDir, "2401-01-010000-g-travel").also { it.mkdirs() }
+        val member1 = File(groupDir, "2401-01-010000-f.md").also { it.writeText("a") }
+        val member2 = File(groupDir, "2401-01-020000-f.jpg").also { it.writeText("b") }
+
+        engine.dissolveGroup(groupDir)
+
+        assertFalse(groupDir.exists())
+        assertFalse(member1.exists())
+        assertFalse(member2.exists())
+        // Members reappear in the month directory, preserved
+        assertTrue(File(monthDir, "2401-01-010000-f.md").exists())
+        assertTrue(File(monthDir, "2401-01-020000-f.jpg").exists())
+        assertEquals("a", File(monthDir, "2401-01-010000-f.md").readText())
+    }
+
+    @Test
+    fun `renameGroupDir renames the display name portion preserving timestamp`() {
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        val groupDir = File(monthDir, "2401-01-010000-g-oldname").also { it.mkdirs() }
+        // A member inside should travel with the directory
+        File(groupDir, "2401-01-010000-f.md").writeText("member")
+
+        val renamed = engine.renameGroupDir(groupDir, "newname")
+
+        assertFalse(groupDir.exists())
+        assertTrue(renamed.exists())
+        assertTrue(renamed.name.startsWith("2401-01-010000-g-newname"))
+        assertEquals(renamed.parentFile, monthDir)
+        assertTrue(File(renamed, "2401-01-010000-f.md").exists())
+    }
+
+    @Test
+    fun `renameGroupDir strips name when blank producing anonymous group`() {
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        val groupDir = File(monthDir, "2401-01-010000-g-something").also { it.mkdirs() }
+
+        val renamed = engine.renameGroupDir(groupDir, null)
+
+        assertTrue(renamed.name.endsWith("-g"))
+        assertTrue(renamed.name.startsWith("2401-01-010000-"))
+    }
+
+    @Test
     fun `saveComment creates file with correct naming`() {
         val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
         File(monthDir, "2401-01-010000-f.md").also { it.writeText("target") }

@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.storage.EntryRole
+import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.ShareItem
 import com.chin.minddump.storage.Space
@@ -36,6 +37,20 @@ data class GroupedEntry(
     val entry: MindDumpEntry,
     val comments: List<MindDumpEntry>,
 )
+
+/**
+ * A group directory summary for rendering in the main list.
+ * [memberEntries] powers the count, type chips, and the newest-member timestamp
+ * used to position the group card in the time-ordered feed.
+ */
+data class GroupSummary(
+    val groupDir: File,
+    val name: String,
+    val memberEntries: List<MindDumpEntry>,
+) {
+    /** Newest member's lastModified, used as the sort key for the group card. */
+    val latestModified: Long get() = memberEntries.maxOfOrNull { it.file.lastModified() } ?: 0L
+}
 
 data class MindDumpUiState(
     val currentSpace: Space = Space.PUBLIC,
@@ -71,9 +86,21 @@ data class MindDumpUiState(
     val selectedEntries: Set<MindDumpEntry> = emptySet(),
     // Grouped entries (files + their comments)
     val groupedEntries: List<GroupedEntry> = emptyList(),
-    // Group directories in the current month
-    val groups: List<File> = emptyList(),
-)
+    // Group directories in the current month, with members for rendering
+    val groups: List<GroupSummary> = emptyList(),
+    // Group currently open in the GroupDetail screen (null on main list)
+    val selectedGroup: File? = null,
+    // Multi-select: show the merge-to-group picker
+    val showGroupMergePicker: Boolean = false,
+    // Rename group dialog state
+    val groupToRename: File? = null,
+    // Long-press group action menu state
+    val groupMenuFor: File? = null,
+) {
+    /** Entries not belonging to any group (rendered as standalone bubbles). */
+    val looseEntries: List<MindDumpEntry>
+        get() = entries.filter { it.groupPath == null }
+}
 
 @HiltViewModel
 @Suppress("TooManyFunctions")
@@ -122,6 +149,7 @@ class MindDumpViewModel
                 entriesFlow.collect { entries ->
                     val grouped = groupEntriesWithComments(entries)
                     _uiState.update { it.copy(entries = entries, groupedEntries = grouped) }
+                    refreshGroups()
                 }
             }
 
@@ -226,8 +254,29 @@ class MindDumpViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 val space = _uiState.value.currentSpace
                 repository.reconcileWithDisk(space)
-                val groups = repository.scanGroups(space)
-                _uiState.update { it.copy(groups = groups) }
+            }
+            refreshGroups()
+        }
+
+        /**
+         * Rebuild the group summaries for the picker and main-list cards.
+         * Groups are derived from the current entry set (which carries groupPath)
+         * so the cards always reflect what the list already knows about.
+         */
+        fun refreshGroups() {
+            viewModelScope.launch(Dispatchers.IO) {
+                val space = _uiState.value.currentSpace
+                val dirGroups = repository.scanGroups(space)
+                val membersByPath = _uiState.value.entries.groupBy { it.groupPath }
+                val summaries = dirGroups.map { dir ->
+                    GroupSummary(
+                        groupDir = dir,
+                        name = FileMetadata.fromFile(dir)?.originalName
+                            ?: dir.name.substringAfter("-g", dir.name),
+                        memberEntries = membersByPath[dir.absolutePath] ?: emptyList(),
+                    )
+                }
+                _uiState.update { it.copy(groups = summaries) }
             }
         }
 
@@ -453,6 +502,65 @@ class MindDumpViewModel
             }
         }
 
+        /**
+         * Move an entry out of its group back to the month directory.
+         */
+        fun moveEntryOutOfGroup(entry: MindDumpEntry) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.moveEntryOutOfGroup(entry, _uiState.value.currentSpace)
+                refreshEntries()
+            }
+        }
+
+        // --- Group-level actions ---
+
+        /** Open a group in the GroupDetail screen. */
+        fun selectGroup(groupDir: File) {
+            _uiState.update { it.copy(selectedGroup = groupDir) }
+        }
+
+        /** Show the long-press action menu for a group card. */
+        fun selectGroupForMenu(groupDir: File) {
+            _uiState.update { it.copy(groupMenuFor = groupDir) }
+        }
+
+        fun dismissGroupMenu() {
+            _uiState.update { it.copy(groupMenuFor = null) }
+        }
+
+        /** Leave the GroupDetail screen. */
+        fun clearSelectedGroup() {
+            _uiState.update { it.copy(selectedGroup = null) }
+        }
+
+        /** Show the rename-group dialog. */
+        fun requestRenameGroup(groupDir: File) {
+            _uiState.update { it.copy(groupToRename = groupDir) }
+        }
+
+        fun cancelRenameGroup() {
+            _uiState.update { it.copy(groupToRename = null) }
+        }
+
+        fun renameGroup(groupDir: File, newName: String?) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.renameGroup(groupDir, _uiState.value.currentSpace, newName)
+                _uiState.update { it.copy(groupToRename = null) }
+                refreshEntries()
+            }
+        }
+
+        /**
+         * Dissolve a group: members move back to the month directory, the empty
+         * group directory is removed. Files are preserved.
+         */
+        fun dissolveGroup(groupDir: File) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.dissolveGroup(groupDir, _uiState.value.currentSpace)
+                refreshEntries()
+            }
+        }
+
         fun moveEntryToSpace(entry: MindDumpEntry, targetSpace: Space) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.moveEntryToSpace(entry, targetSpace)
@@ -492,7 +600,49 @@ class MindDumpViewModel
                 it.copy(
                     isMultiSelectMode = false,
                     selectedEntries = emptySet(),
+                    showGroupMergePicker = false,
                 )
+            }
+        }
+
+        /** Show the group picker to merge the selected entries into a group. */
+        fun showGroupMergePicker() {
+            _uiState.update { it.copy(showGroupMergePicker = true) }
+        }
+
+        fun dismissGroupMergePicker() {
+            _uiState.update { it.copy(showGroupMergePicker = false) }
+        }
+
+        /** Merge all selected entries into an existing group. */
+        fun mergeSelectedIntoGroup(groupDir: File) {
+            val entries = _uiState.value.selectedEntries.toList()
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.moveEntriesToGroup(entries, groupDir)
+                _uiState.update {
+                    it.copy(
+                        isMultiSelectMode = false,
+                        selectedEntries = emptySet(),
+                        showGroupMergePicker = false,
+                    )
+                }
+                refreshEntries()
+            }
+        }
+
+        /** Create a new group and merge all selected entries into it. */
+        fun mergeSelectedIntoNewGroup(name: String?) {
+            val entries = _uiState.value.selectedEntries.toList()
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.createAndMoveGroupForEntries(entries, _uiState.value.currentSpace, name)
+                _uiState.update {
+                    it.copy(
+                        isMultiSelectMode = false,
+                        selectedEntries = emptySet(),
+                        showGroupMergePicker = false,
+                    )
+                }
+                refreshEntries()
             }
         }
 

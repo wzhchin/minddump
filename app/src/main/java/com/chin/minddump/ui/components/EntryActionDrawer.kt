@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.SelectAll
@@ -64,6 +65,7 @@ fun EntryActionDrawer(
     onCreateGroup: (String?) -> Unit,
     onMoveToSpace: (Space) -> Unit,
     onDismiss: () -> Unit,
+    onMoveOutOfGroup: (() -> Unit)? = null,
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
@@ -118,6 +120,17 @@ fun EntryActionDrawer(
                     showGroupPicker = true
                 },
             )
+            if (entry.groupPath != null && onMoveOutOfGroup != null) {
+                ActionItem(
+                    icon = Icons.Filled.FolderOpen,
+                    label = "移出该组",
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onMoveOutOfGroup()
+                        onDismiss()
+                    },
+                )
+            }
             val targetSpace = if (currentSpace == Space.PUBLIC) Space.PRIVATE else Space.PUBLIC
             val spaceIcon = if (targetSpace == Space.PRIVATE) Icons.Filled.Lock else Icons.Filled.LockOpen
             val spaceLabel = if (targetSpace == Space.PUBLIC) "移动到公共" else "移动到私有"
@@ -378,37 +391,82 @@ fun GroupPickerSheet(
 }
 
 // ──────────────────────────────────────────────
-// Multi-Select Action Bar (Task 6.3)
+// Multi-Select Top Bar
 // ──────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MultiSelectActionBar(
+fun MultiSelectTopBar(
     selectedCount: Int,
+    onMergeToGroup: () -> Unit,
     onDelete: () -> Unit,
-    onClearSelection: () -> Unit,
     onDone: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextButton(onClick = onClearSelection) {
-            Text("取消")
-        }
-        Text(
-            text = "已选 $selectedCount 项",
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Row {
+    androidx.compose.material3.TopAppBar(
+        title = { Text("已选 $selectedCount 项") },
+        navigationIcon = {
+            TextButton(onClick = onDone) { Text("取消") }
+        },
+        actions = {
+            TextButton(onClick = onMergeToGroup) { Text("合并为分组") }
             TextButton(onClick = onDelete) {
                 Text("删除", color = MaterialTheme.colorScheme.error)
             }
-            TextButton(onClick = onDone) {
-                Text("完成")
-            }
+            TextButton(onClick = onDone) { Text("完成") }
+        },
+    )
+}
+
+// ──────────────────────────────────────────────
+// Group Action Sheet (long-press on a group card)
+// ──────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GroupActionSheet(
+    groupName: String,
+    onRename: () -> Unit,
+    onDissolve: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val haptics = rememberPremiumHaptics()
+    val shapes = LocalExpressiveShapes.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = shapes.cardLarge as RoundedCornerShape,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+        ) {
+            Text(
+                text = groupName,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 16.dp, start = 8.dp),
+            )
+            ActionItem(
+                icon = Icons.Filled.DriveFileRenameOutline,
+                label = "重命名组",
+                onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    onRename()
+                },
+            )
+            ActionItem(
+                icon = Icons.Filled.Delete,
+                label = "解散分组",
+                isDestructive = true,
+                onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    onDissolve()
+                },
+            )
         }
     }
 }

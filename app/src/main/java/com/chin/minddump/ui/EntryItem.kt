@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
@@ -63,6 +64,7 @@ import com.chin.minddump.ui.components.BubbleRole
 import com.chin.minddump.ui.components.DocumentChip
 import com.chin.minddump.ui.components.GroupedMessageBubble
 import com.chin.minddump.ui.GroupedEntry
+import com.chin.minddump.ui.GroupSummary
 import com.chin.minddump.ui.components.ZoomableAsyncImage
 import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
@@ -70,6 +72,7 @@ import com.chin.minddump.ui.theme.LocalMotionCurve
 import com.chin.minddump.ui.theme.rememberPremiumHaptics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -77,6 +80,22 @@ import java.time.format.DateTimeFormatter
 // ──────────────────────────────────────────────
 // Entry List
 // ──────────────────────────────────────────────
+
+/**
+ * One row in the time-ordered feed: either a loose entry (with its nested comments)
+ * or a group summary card.
+ */
+sealed interface FeedItem {
+    val sortKey: Long
+
+    data class Loose(val grouped: GroupedEntry) : FeedItem {
+        override val sortKey: Long get() = grouped.entry.file.lastModified()
+    }
+
+    data class GroupCard(val summary: GroupSummary) : FeedItem {
+        override val sortKey: Long get() = summary.latestModified
+    }
+}
 
 @Composable
 fun EntryList(
@@ -86,14 +105,17 @@ fun EntryList(
     modifier: Modifier = Modifier,
     isMultiSelectMode: Boolean = false,
     selectedEntries: Set<MindDumpEntry> = emptySet(),
-    groupedEntries: List<GroupedEntry> = emptyList(),
+    groups: List<GroupSummary> = emptyList(),
+    onGroupClick: (File) -> Unit = {},
+    onGroupLongClick: (File) -> Unit = {},
 ) {
-    // Use grouped entries if available, otherwise fall back to flat list
-    val displayItems = if (groupedEntries.isNotEmpty()) {
-        groupedEntries
-    } else {
-        entries.map { GroupedEntry(it, emptyList()) }
-    }
+    // Loose entries = not in any group. Group cards render separately from members.
+    val looseGrouped = groupEntriesForRender(entries.filter { it.groupPath == null })
+        .map { FeedItem.Loose(it) }
+    val groupCards = groups.map { FeedItem.GroupCard(it) }
+
+    val displayItems = (looseGrouped + groupCards)
+        .sortedByDescending { it.sortKey }
 
     if (displayItems.isEmpty()) {
         Box(
@@ -116,9 +138,19 @@ fun EntryList(
     ) {
         items(
             items = displayItems,
-            key = { it.entry.file.absolutePath },
-            contentType = { it.entry.type.name },
-        ) { grouped ->
+            key = { item ->
+                when (item) {
+                    is FeedItem.Loose -> "entry:${item.grouped.entry.file.absolutePath}"
+                    is FeedItem.GroupCard -> "group:${item.summary.groupDir.absolutePath}"
+                }
+            },
+            contentType = { item ->
+                when (item) {
+                    is FeedItem.Loose -> "entry:${item.grouped.entry.type.name}"
+                    is FeedItem.GroupCard -> "group"
+                }
+            },
+        ) { item ->
             AnimatedVisibility(
                 visible = true,
                 enter = slideInVertically(
@@ -139,22 +171,161 @@ fun EntryList(
                     animationSpec = tween(durationMillis = animDuration.short),
                 ),
             ) {
-                GroupedEntryItem(
-                    groupedEntry = grouped,
-                    onClick = { onEntryClick(grouped.entry) },
-                    onLongClick = { onEntryLongClick(grouped.entry) },
-                    onCommentClick = { comment -> onEntryClick(comment) },
-                    isMultiSelectMode = isMultiSelectMode,
-                    isSelected = grouped.entry in selectedEntries,
-                )
+                when (item) {
+                    is FeedItem.Loose -> GroupedEntryItem(
+                        groupedEntry = item.grouped,
+                        onClick = { onEntryClick(item.grouped.entry) },
+                        onLongClick = { onEntryLongClick(item.grouped.entry) },
+                        onCommentClick = { comment -> onEntryClick(comment) },
+                        isMultiSelectMode = isMultiSelectMode,
+                        isSelected = item.grouped.entry in selectedEntries,
+                    )
+
+                    is FeedItem.GroupCard -> GroupSummaryCard(
+                        summary = item.summary,
+                        onClick = { onGroupClick(item.summary.groupDir) },
+                        onLongClick = { onGroupLongClick(item.summary.groupDir) },
+                    )
+                }
             }
         }
     }
 }
 
 // ──────────────────────────────────────────────
-// Grouped Entry (file + nested comments)
+// Comment nesting helper (render-time)
 // ──────────────────────────────────────────────
+
+/**
+ * Nest comments under their target file entry for rendering.
+ * Mirrors the ViewModel logic so the list can group loose entries' comments.
+ */
+private fun groupEntriesForRender(entries: List<MindDumpEntry>): List<GroupedEntry> {
+    val files = entries.filter { it.role == EntryRole.FILE }
+    val comments = entries.filter { it.role == EntryRole.COMMENT }
+    val result = mutableListOf<GroupedEntry>()
+    val matched = mutableSetOf<MindDumpEntry>()
+
+    for (file in files) {
+        val fileComments = comments.filter { it.targetTimestamp == file.timestamp && it !in matched }
+        matched.addAll(fileComments)
+        result.add(GroupedEntry(entry = file, comments = fileComments))
+    }
+    for (comment in comments) {
+        if (comment !in matched) result.add(GroupedEntry(entry = comment, comments = emptyList()))
+    }
+    return result
+}
+
+// ──────────────────────────────────────────────
+// Group Summary Card
+// ──────────────────────────────────────────────
+
+/**
+ * Renders a group as a summary card: folder icon, name, member count, and a row
+ * of the distinct entry types found inside (with counts). Tap opens the group
+ * detail; long-press opens the group action menu.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun GroupSummaryCard(
+    summary: GroupSummary,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val haptics = rememberPremiumHaptics()
+    val typeCounts = summary.memberEntries.groupingBy { it.type }.eachCount()
+
+    GroupedMessageBubble(
+        position = BubblePosition.SINGLE,
+        role = BubbleRole.ASSISTANT,
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    onClick()
+                },
+                onLongClick = {
+                    haptics.perform(HapticPattern.Buildup)
+                    onLongClick()
+                },
+            ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 12.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Folder,
+                    contentDescription = "分组",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = summary.name.ifBlank { "未命名分组" },
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "${summary.memberEntries.size}项",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        // Type chips row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (typeCounts.isEmpty()) {
+                Text(
+                    text = "空分组",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            } else {
+                typeCounts.forEach { (type, count) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = type.toIcon(),
+                            contentDescription = type.name,
+                            tint = type.toColor(),
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "×$count",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 
 /**
  * Renders a file entry with its comments nested inside the same bubble.

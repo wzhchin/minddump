@@ -27,6 +27,8 @@ sealed class Screen(
     data object FullscreenEdit : Screen("fullscreen_edit")
 
     data object Statistics : Screen("statistics")
+
+    data object GroupDetail : Screen("group_detail")
 }
 
 @Composable
@@ -84,6 +86,14 @@ fun MindDumpNavGraph(
                 onNavigateToCamera = { navController.navigate(Screen.Camera.route) },
                 onNavigateToFullscreenEdit = { navController.navigate(Screen.FullscreenEdit.route) },
                 onNavigateToStatistics = { navController.navigate(Screen.Statistics.route) },
+                onNavigateToGroupDetail = { navController.navigate(Screen.GroupDetail.route) },
+            )
+        }
+
+        composable(Screen.GroupDetail.route) {
+            GroupDetailScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
             )
         }
 

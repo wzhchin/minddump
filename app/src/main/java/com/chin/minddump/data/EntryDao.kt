@@ -59,6 +59,9 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE groupPath = :groupPath ORDER BY lastModified DESC")
     fun getEntriesInGroup(groupPath: String): Flow<List<EntryEntity>>
 
+    @Query("SELECT * FROM entries WHERE groupPath = :groupPath")
+    suspend fun getEntriesInGroupSnapshot(groupPath: String): List<EntryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entry: EntryEntity): Long
 

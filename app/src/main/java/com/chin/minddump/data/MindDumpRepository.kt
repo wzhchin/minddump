@@ -225,6 +225,85 @@ class MindDumpRepository
             }
 
         /**
+         * Create a group and move a batch of entries into it.
+         */
+        suspend fun createAndMoveGroupForEntries(
+            entries: List<MindDumpEntry>,
+            space: Space,
+            name: String?,
+        ): File =
+            withContext(Dispatchers.IO) {
+                val groupDir = storageEngine.createGroup(space, name)
+                entries.forEach { moveToGroup(it, groupDir) }
+                groupDir
+            }
+
+        /**
+         * Move a batch of entries into an existing group directory.
+         */
+        suspend fun moveEntriesToGroup(entries: List<MindDumpEntry>, groupDir: File) =
+            withContext(Dispatchers.IO) {
+                entries.forEach { moveToGroup(it, groupDir) }
+            }
+
+        /**
+         * Move an entry out of its group back to the month directory.
+         */
+        suspend fun moveEntryOutOfGroup(entry: MindDumpEntry, space: Space) =
+            withContext(Dispatchers.IO) {
+                moveOutOfGroup(entry, space)
+            }
+
+        /**
+         * Rename a group directory and rewrite every member's groupPath.
+         * Falls back to [reconcileWithDisk] to guarantee DB/disk consistency.
+         */
+        suspend fun renameGroup(groupDir: File, space: Space, newName: String?): File =
+            withContext(Dispatchers.IO) {
+                val oldPath = groupDir.absolutePath
+                val members = dao.getEntriesInGroupSnapshot(oldPath)
+                val newDir = storageEngine.renameGroupDir(groupDir, newName)
+                val newPath = newDir.absolutePath
+                members.forEach { entity ->
+                    val movedFile = File(newPath, entity.filePath.substringAfterLast('/'))
+                    dao.deleteByPath(entity.filePath)
+                    dao.insert(
+                        entity.copy(
+                            filePath = movedFile.absolutePath,
+                            groupPath = newPath,
+                            lastModified = movedFile.lastModified(),
+                        ),
+                    )
+                }
+                reconcileWithDisk(space)
+                newDir
+            }
+
+        /**
+         * Dissolve a group: move every member back to the month directory and
+         * delete the now-empty group directory. Files are preserved.
+         */
+        suspend fun dissolveGroup(groupDir: File, space: Space) =
+            withContext(Dispatchers.IO) {
+                val oldPath = groupDir.absolutePath
+                val members = dao.getEntriesInGroupSnapshot(oldPath)
+                storageEngine.dissolveGroup(groupDir)
+                val monthDir = groupDir.parentFile
+                members.forEach { entity ->
+                    val movedFile = File(monthDir, entity.filePath.substringAfterLast('/'))
+                    dao.deleteByPath(entity.filePath)
+                    dao.insert(
+                        entity.copy(
+                            filePath = movedFile.absolutePath,
+                            groupPath = null,
+                            lastModified = movedFile.lastModified(),
+                        ),
+                    )
+                }
+                reconcileWithDisk(space)
+            }
+
+        /**
          * Move an entry into a group directory.
          */
         suspend fun moveToGroup(entry: MindDumpEntry, groupDir: File) =

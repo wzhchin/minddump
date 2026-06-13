@@ -206,6 +206,43 @@ class FileStorageEngine(
     }
 
     /**
+     * Dissolve a group: move every member back into the parent month directory,
+     * then remove the now-empty group directory. Files are preserved.
+     *
+     * On a per-file failure, the exception propagates and any files already
+     * moved remain in the month directory (reconcile will re-index them).
+     */
+    fun dissolveGroup(groupDir: File) {
+        val monthDir = groupDir.parentFile
+            ?: error("Group directory has no parent: ${groupDir.absolutePath}")
+        groupDir
+            .listFiles()
+            ?.filter { it.isFile }
+            ?.forEach { file ->
+                val dest = File(monthDir, file.name)
+                val moved = file.renameTo(dest)
+                check(moved) { "Failed to move ${file.absolutePath} out of group ${groupDir.absolutePath}" }
+            }
+        val deleted = groupDir.delete()
+        check(deleted) { "Failed to delete group directory ${groupDir.absolutePath}" }
+    }
+
+    /**
+     * Rename a group directory's display name portion.
+     * Reuses the {ts}-g[-{name}] naming rule from [createGroup].
+     * Returns the renamed directory.
+     */
+    fun renameGroupDir(groupDir: File, newName: String?): File {
+        val meta = FileMetadata.fromFile(groupDir) ?: error("Cannot parse group directory: ${groupDir.name}")
+        val suffix = if (newName.isNullOrBlank()) "g" else "g-$newName"
+        val newDir = File(groupDir.parent, "${meta.timestamp}-$suffix")
+        check(!newDir.exists()) { "Target group directory already exists: ${newDir.absolutePath}" }
+        val renamed = groupDir.renameTo(newDir)
+        check(renamed) { "Failed to rename group directory ${groupDir.absolutePath}" }
+        return newDir
+    }
+
+    /**
      * Save a comment file targeting a specific entry.
      * Produces: {targetTs}-n-{yymm-dd-HHMMSS}.md
      * The comment is placed in the same directory as the target.

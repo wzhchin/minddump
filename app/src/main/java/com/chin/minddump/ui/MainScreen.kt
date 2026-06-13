@@ -38,7 +38,9 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,8 +62,10 @@ import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.ui.components.BiometricGate
 import com.chin.minddump.ui.components.EntryActionDrawer
+import com.chin.minddump.ui.components.GroupActionSheet
+import com.chin.minddump.ui.components.GroupPickerSheet
 import com.chin.minddump.ui.components.MigrationDialog
-import com.chin.minddump.ui.components.MultiSelectActionBar
+import com.chin.minddump.ui.components.MultiSelectTopBar
 import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.SettingsDialog
@@ -82,6 +86,7 @@ fun MainScreen(
     onNavigateToCamera: () -> Unit = {},
     onNavigateToFullscreenEdit: () -> Unit = {},
     onNavigateToStatistics: () -> Unit = {},
+    onNavigateToGroupDetail: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -152,6 +157,15 @@ fun MainScreen(
         }
     }
 
+    // Refresh the group list the moment the action drawer or merge picker opens,
+    // so the picker always reflects the latest disk state (fixes the
+    // "暂无分组" bug where groups were only loaded as a side-effect of refresh).
+    LaunchedEffect(uiState.selectedEntryForAction, uiState.isMultiSelectMode) {
+        if (uiState.selectedEntryForAction != null || uiState.isMultiSelectMode) {
+            viewModel.refreshGroups()
+        }
+    }
+
     // --- Theme + Layout ---
     MindDumpTheme(darkTheme = uiState.isDarkTheme) {
         NiaBackground {
@@ -165,6 +179,14 @@ fun MainScreen(
                     }
                 },
                 topBar = {
+                    if (uiState.isMultiSelectMode) {
+                        MultiSelectTopBar(
+                            selectedCount = uiState.selectedEntries.size,
+                            onMergeToGroup = { viewModel.showGroupMergePicker() },
+                            onDelete = { viewModel.deleteSelectedEntries() },
+                            onDone = { viewModel.exitMultiSelectMode() },
+                        )
+                    } else {
                     CenterAlignedTopAppBar(
                         title = {
                             // Search field when expanded
@@ -258,31 +280,35 @@ fun MainScreen(
                             containerColor = appBarContainerColor,
                         ),
                     )
+                    }
                 },
                 bottomBar = {
-                    InputBar(
-                        inputText = uiState.inputText,
-                        isRecording = uiState.isRecording,
-                        currentSpace = uiState.currentSpace,
-                        actions = InputBarActions(
-                            onInputChange = { viewModel.updateInputText(it) },
-                            onSubmit = { viewModel.submitText() },
-                            onRecordClick = {
-                                if (uiState.isRecording) {
-                                    audioRecorder.stop()
-                                    viewModel.stopRecording()
-                                } else {
-                                    audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                                }
-                            },
-                            onCameraClick = {
-                                cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
-                            },
-                            onImportClick = { fileImportLauncher.launch(arrayOf("*/*")) },
-                            onSpaceToggle = { viewModel.requestSpaceSwitch() },
-                            onFullscreenClick = onNavigateToFullscreenEdit,
-                        ),
-                    )
+                    // Hide the input bar during multi-select
+                    if (!uiState.isMultiSelectMode) {
+                        InputBar(
+                            inputText = uiState.inputText,
+                            isRecording = uiState.isRecording,
+                            currentSpace = uiState.currentSpace,
+                            actions = InputBarActions(
+                                onInputChange = { viewModel.updateInputText(it) },
+                                onSubmit = { viewModel.submitText() },
+                                onRecordClick = {
+                                    if (uiState.isRecording) {
+                                        audioRecorder.stop()
+                                        viewModel.stopRecording()
+                                    } else {
+                                        audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                                onCameraClick = {
+                                    cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                },
+                                onImportClick = { fileImportLauncher.launch(arrayOf("*/*")) },
+                                onSpaceToggle = { viewModel.requestSpaceSwitch() },
+                                onFullscreenClick = onNavigateToFullscreenEdit,
+                            ),
+                        )
+                    }
                 },
                 containerColor = Color.Transparent,
             ) { paddingValues ->
@@ -291,14 +317,6 @@ fun MainScreen(
                 ) {
                     // Entry list
                     Box(modifier = Modifier.fillMaxSize()) {
-                        if (uiState.isMultiSelectMode) {
-                            MultiSelectActionBar(
-                                selectedCount = uiState.selectedEntries.size,
-                                onDelete = { viewModel.deleteSelectedEntries() },
-                                onClearSelection = { viewModel.exitMultiSelectMode() },
-                                onDone = { viewModel.exitMultiSelectMode() },
-                            )
-                        }
                         EntryList(
                             entries = uiState.entries,
                             onEntryClick = { entry ->
@@ -318,7 +336,15 @@ fun MainScreen(
                             modifier = Modifier.fillMaxSize(),
                             isMultiSelectMode = uiState.isMultiSelectMode,
                             selectedEntries = uiState.selectedEntries,
-                            groupedEntries = uiState.groupedEntries,
+                            groups = uiState.groups,
+                            onGroupClick = { groupDir ->
+                                viewModel.selectGroup(groupDir)
+                                onNavigateToGroupDetail()
+                            },
+                            onGroupLongClick = { groupDir ->
+                                haptics.perform(HapticPattern.Buildup)
+                                viewModel.selectGroupForMenu(groupDir)
+                            },
                         )
                     }
                 }
@@ -329,7 +355,7 @@ fun MainScreen(
                 EntryActionDrawer(
                     entry = entry,
                     currentSpace = uiState.currentSpace,
-                    groups = uiState.groups,
+                    groups = uiState.groups.map { it.groupDir },
                     onRename = { newName ->
                         viewModel.renameEntry(entry, newName)
                     },
@@ -349,6 +375,60 @@ fun MainScreen(
                         viewModel.moveEntryToSpace(entry, targetSpace)
                     },
                     onDismiss = { viewModel.clearEntryAction() },
+                )
+            }
+
+            // Long-press group action menu
+            uiState.groupMenuFor?.let { groupDir ->
+                GroupActionSheet(
+                    groupName = groupDir.name.substringAfter("-g", groupDir.name),
+                    onRename = {
+                        viewModel.dismissGroupMenu()
+                        viewModel.requestRenameGroup(groupDir)
+                    },
+                    onDissolve = {
+                        viewModel.dismissGroupMenu()
+                        viewModel.dissolveGroup(groupDir)
+                    },
+                    onDismiss = { viewModel.dismissGroupMenu() },
+                )
+            }
+
+            // Rename group dialog
+            uiState.groupToRename?.let { groupDir ->
+                val shapes2 = LocalExpressiveShapes.current
+                var newName by remember { mutableStateOf("") }
+                AlertDialog(
+                    onDismissRequest = { viewModel.cancelRenameGroup() },
+                    shape = shapes2.cardMedium,
+                    title = { Text("重命名组") },
+                    text = {
+                        OutlinedTextField(
+                            value = newName,
+                            onValueChange = { newName = it },
+                            label = { Text("组名（可选）") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.renameGroup(groupDir, newName.ifBlank { null })
+                        }) { Text("确定") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.cancelRenameGroup() }) { Text("取消") }
+                    },
+                )
+            }
+
+            // Multi-select merge-to-group picker
+            if (uiState.showGroupMergePicker) {
+                GroupPickerSheet(
+                    groups = uiState.groups.map { it.groupDir },
+                    onSelectGroup = { groupDir -> viewModel.mergeSelectedIntoGroup(groupDir) },
+                    onCreateGroup = { name -> viewModel.mergeSelectedIntoNewGroup(name) },
+                    onDismiss = { viewModel.dismissGroupMergePicker() },
                 )
             }
 
@@ -496,7 +576,7 @@ private fun resolveTreeUriToPath(treeUri: Uri): String? {
     }
 }
 
-private fun openFile(context: Context, file: File) {
+fun openFile(context: Context, file: File) {
     try {
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
