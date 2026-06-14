@@ -77,6 +77,14 @@ interface EntryDao {
     @Query("DELETE FROM entries WHERE filePath IN (:paths)")
     suspend fun deleteByPaths(paths: List<String>)
 
+    /** Drop every row — used by the full rebuild-from-disk path. */
+    @Query("DELETE FROM entries")
+    suspend fun clearAll()
+
+    /** Force a full rebuild of the FTS index from the content table. */
+    @Query("INSERT INTO entries_fts(entries_fts) VALUES('rebuild')")
+    suspend fun rebuildFtsIndex()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun updateAll(entries: List<EntryEntity>)
 

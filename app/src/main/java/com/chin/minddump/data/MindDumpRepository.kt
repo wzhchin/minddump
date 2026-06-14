@@ -500,6 +500,21 @@ class MindDumpRepository
         }
 
         /**
+         * Wipe the database and repopulate it entirely from disk.
+         * Files are the source of truth — nothing on disk is touched.
+         * Clears both spaces then re-scans them, and rebuilds the FTS index.
+         */
+        suspend fun rebuildDatabase() =
+            withContext(Dispatchers.IO) {
+                Timber.i("Rebuilding database from disk")
+                dao.clearAll()
+                reconcileWithDisk(Space.PUBLIC)
+                reconcileWithDisk(Space.PRIVATE)
+                dao.rebuildFtsIndex()
+                Timber.i("Database rebuild complete")
+            }
+
+        /**
          * Bidirectional reconcile: sync Room with actual filesystem state.
          * Derives role, targetTimestamp, groupPath from disk using FileMetadata.
          */
@@ -603,6 +618,9 @@ class MindDumpRepository
         fun setWorkDir(path: String) = storageEngine.setWorkDir(path)
 
         fun countFiles(): Int = storageEngine.countFiles()
+
+        /** Total entry rows currently in the database (both spaces). */
+        suspend fun countAllTotal(): Int = dao.countAll()
 
         fun countFilesIn(dir: File): Int = storageEngine.countFilesIn(dir)
 
