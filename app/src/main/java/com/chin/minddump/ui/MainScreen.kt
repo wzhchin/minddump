@@ -328,7 +328,7 @@ fun MainScreen(
                                     }
                                 }
                             },
-                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            colors = TopAppBarDefaults.topAppBarColors(
                                 containerColor = appBarContainerColor,
                             ),
                         )

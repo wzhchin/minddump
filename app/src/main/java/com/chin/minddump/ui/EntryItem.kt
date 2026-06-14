@@ -31,9 +31,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -821,7 +821,7 @@ private fun EntryType.toIcon(): ImageVector = when (this) {
     EntryType.RECORDING -> Icons.Filled.Mic
     EntryType.VIDEO -> Icons.Filled.Videocam
     EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
-    EntryType.UNKNOWN -> Icons.Filled.HelpOutline
+    EntryType.UNKNOWN -> Icons.AutoMirrored.Filled.HelpOutline
 }
 
 @Composable

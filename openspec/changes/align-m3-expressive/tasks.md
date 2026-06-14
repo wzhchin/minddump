@@ -43,7 +43,7 @@
 
 ## 5. Phase 4 — Cleanup & verification
 
-- [ ] 5.1 Final pass: ensure no leftover bubble imports/references; confirm `ExpressiveShapes` tokens are actually referenced by the render layer (not just defined).
-- [ ] 5.2 Verify both locales (zh-CN default, en) for all new/changed strings; confirm code/comments remain English.
-- [ ] 5.3 Run `./gradlew detekt ktlintCheck`; fix all findings.
-- [ ] 5.4 Smoke-test full flow: capture text/photo/audio/video/file, multi-select, group open/long-press, comments expand, theme settings change, rebuild-from-disk, FTS search.
+- [x] 5.1 Final pass: ensure no leftover bubble imports/references; confirm `ExpressiveShapes` tokens are actually referenced by the render layer (not just defined).
+- [x] 5.2 Verify both locales (zh-CN default, en) for all new/changed strings; confirm code/comments remain English.
+- [x] 5.3 Run `./gradlew detekt ktlintCheck`; fix all findings.
+- [ ] 5.4 Smoke-test full flow: capture text/photo/audio/video/file, multi-select, group open/long-press, comments expand, theme settings change, rebuild-from-disk, FTS search. *(Pending: no device/emulator connected — run manually on a device.)*

@@ -93,6 +93,18 @@
     <!-- Entry type display names -->
     <string name="photo">Photo</string>
 
+    <!-- Share receiver -->
+    <string name="share_title">Save to MindDump</string>
+    <string name="share_summary_text">1 text</string>
+    <string name="share_summary_file">1 file</string>
+    <string name="share_summary_files">%1$d files</string>
+    <string name="share_summary_mixed">%1$d items</string>
+    <string name="share_to_public">Public</string>
+    <string name="share_to_private">Private</string>
+    <string name="share_saved">Saved</string>
+    <string name="share_saved_unencrypted">Saved (unencrypted)</string>
+    <string name="share_error">Some items failed to save</string>
+
     <!-- Theme settings -->
     <string name="theme_section">Appearance</string>
     <string name="theme_customize">Customize theme</string>

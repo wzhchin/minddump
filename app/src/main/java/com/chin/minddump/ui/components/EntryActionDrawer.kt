@@ -28,9 +28,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,7 +71,7 @@ fun EntryActionDrawer(
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(SheetValue.Hidden)
 
     var showRenameDialog by remember { mutableStateOf(false) }
     var showGroupPicker by remember { mutableStateOf(false) }
@@ -432,7 +433,7 @@ fun GroupActionSheet(
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(SheetValue.Hidden)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
