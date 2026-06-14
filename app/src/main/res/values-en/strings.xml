@@ -33,6 +33,15 @@
     <string name="change_directory">Change directory</string>
     <string name="done">Done</string>
 
+    <!-- Database rebuild -->
+    <string name="rebuild_database">Rebuild database</string>
+    <string name="rebuild_database_desc">Rebuild the SQLite index from files on disk. Files themselves are not modified.</string>
+    <string name="rebuild_database_confirm_title">Rebuild database?</string>
+    <string name="rebuild_database_confirm_message">This will clear and rebuild the index database. Files are kept unchanged. This cannot be undone.</string>
+    <string name="rebuild_database_running">Rebuilding…</string>
+    <string name="rebuild_database_success">Database rebuilt: %1$d entries</string>
+    <string name="rebuild">Rebuild</string>
+
     <!-- Migration -->
     <string name="migration_title">Migrate data</string>
     <string name="migration_current_files">Current directory has %1$d files.</string>

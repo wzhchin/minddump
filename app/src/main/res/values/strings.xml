@@ -33,6 +33,15 @@
     <string name="change_directory">更改目录</string>
     <string name="done">完成</string>
 
+    <!-- Database rebuild -->
+    <string name="rebuild_database">重建数据库</string>
+    <string name="rebuild_database_desc">从磁盘文件重新构建 SQLite 索引。文件本身不会改动。</string>
+    <string name="rebuild_database_confirm_title">重建数据库？</string>
+    <string name="rebuild_database_confirm_message">将清空并重建索引数据库，文件保持不变。此操作不可撤销。</string>
+    <string name="rebuild_database_running">正在重建…</string>
+    <string name="rebuild_database_success">已重建数据库，共 %1$d 条记录</string>
+    <string name="rebuild">重建</string>
+
     <!-- Migration -->
     <string name="migration_title">迁移数据</string>
     <string name="migration_current_files">当前目录有 %1$d 个文件。</string>

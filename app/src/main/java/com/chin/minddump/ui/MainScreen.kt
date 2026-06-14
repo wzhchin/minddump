@@ -73,6 +73,7 @@ import com.chin.minddump.ui.components.MigrationDialog
 import com.chin.minddump.ui.components.MultiSelectTopBar
 import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
+import com.chin.minddump.ui.components.RebuildDatabaseDialog
 import com.chin.minddump.ui.components.SettingsDialog
 import com.chin.minddump.ui.components.SpaceSelectionDialog
 import com.chin.minddump.ui.theme.HapticPattern
@@ -484,7 +485,24 @@ fun MainScreen(
                 SettingsDialog(
                     workDir = uiState.workDir,
                     onChangeDir = { dirPickerLauncher.launch(null) },
+                    onRebuildDatabase = { viewModel.showRebuildDatabaseDialog() },
                     onDismiss = { viewModel.setShowSettings(false) },
+                )
+            }
+
+            if (uiState.showRebuildDatabaseDialog) {
+                RebuildDatabaseDialog(
+                    running = uiState.isRebuildingDatabase,
+                    onConfirm = {
+                        scope.launch {
+                            val count = viewModel.rebuildDatabase()
+                            snackbarHostState.showSnackbar(
+                                message = context.getString(R.string.rebuild_database_success, count),
+                                duration = SnackbarDuration.Short,
+                            )
+                        }
+                    },
+                    onDismiss = { viewModel.dismissRebuildDatabaseDialog() },
                 )
             }
 

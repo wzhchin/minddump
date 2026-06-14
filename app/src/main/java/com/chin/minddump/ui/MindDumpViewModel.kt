@@ -72,6 +72,8 @@ data class MindDumpUiState(
     // Work directory settings
     val workDir: String = "",
     val showSettings: Boolean = false,
+    val showRebuildDatabaseDialog: Boolean = false,
+    val isRebuildingDatabase: Boolean = false,
     val showMigrationDialog: Boolean = false,
     val pendingNewDir: String? = null,
     val currentFileCount: Int = 0,
@@ -785,6 +787,34 @@ class MindDumpViewModel
 
         fun setShowSettings(show: Boolean) {
             _uiState.update { it.copy(showSettings = show) }
+        }
+
+        fun showRebuildDatabaseDialog() {
+            _uiState.update { it.copy(showRebuildDatabaseDialog = true) }
+        }
+
+        fun dismissRebuildDatabaseDialog() {
+            _uiState.update { it.copy(showRebuildDatabaseDialog = false) }
+        }
+
+        /**
+         * Wipe the SQLite/FTS tables and rebuild them from disk. Files are
+         * untouched. Returns the total number of entries now in the database.
+         */
+        suspend fun rebuildDatabase(): Int {
+            _uiState.update { it.copy(isRebuildingDatabase = true) }
+            return try {
+                repository.rebuildDatabase()
+                refreshForCurrentScope()
+                repository.countAllTotal()
+            } finally {
+                _uiState.update {
+                    it.copy(
+                        isRebuildingDatabase = false,
+                        showRebuildDatabaseDialog = false,
+                    )
+                }
+            }
         }
 
         /**
