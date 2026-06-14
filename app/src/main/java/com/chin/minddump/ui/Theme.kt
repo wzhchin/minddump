@@ -8,10 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LocalAbsoluteTonalElevation
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -22,106 +18,31 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import com.chin.minddump.ui.theme.AppThemeMode
 import com.chin.minddump.ui.theme.ExpressiveShapes
 import com.chin.minddump.ui.theme.GradientColors
 import com.chin.minddump.ui.theme.LocalAnimationDuration
 import com.chin.minddump.ui.theme.LocalExpressiveShapes
 import com.chin.minddump.ui.theme.LocalGradientColors
 import com.chin.minddump.ui.theme.LocalMotionCurve
+import com.chin.minddump.ui.theme.ThemePreferences
 import com.chin.minddump.ui.theme.createTypography
 import com.chin.minddump.ui.theme.isReduceMotionEnabled
 import com.chin.minddump.ui.theme.rememberAnimationDuration
 import com.chin.minddump.ui.theme.rememberMotionCurve
-import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
+import com.materialkolor.DynamicMaterialTheme
 
 // ──────────────────────────────────────────────
-// Color palette
+// Default brand seed (used below Android 12, or when the user hasn't picked one)
 // ──────────────────────────────────────────────
 
-internal val Blue10 = Color(0xFF001F28)
-internal val Blue40 = Color(0xFF006780)
-internal val Blue90 = Color(0xFFB8EAFF)
-internal val DarkPurpleGray10 = Color(0xFF201A1B)
-internal val DarkPurpleGray90 = Color(0xFFECDFE0)
-internal val DarkPurpleGray95 = Color(0xFFFAEEEF)
-internal val DarkPurpleGray99 = Color(0xFFFCFCFC)
-internal val Orange10 = Color(0xFF380D00)
-internal val Orange40 = Color(0xFFA23F16)
-internal val Orange90 = Color(0xFFFFDBCF)
-internal val Purple10 = Color(0xFF36003C)
-internal val Purple30 = Color(0xFF702776)
-internal val Purple40 = Color(0xFF8B418F)
-internal val Purple80 = Color(0xFFFFA9FE)
-internal val Purple90 = Color(0xFFFFD6FA)
-internal val PurpleGray30 = Color(0xFF4D444C)
-internal val PurpleGray50 = Color(0xFF7F747C)
-internal val PurpleGray60 = Color(0xFF998D96)
-internal val PurpleGray80 = Color(0xFFD0C3CC)
-internal val PurpleGray90 = Color(0xFFEDDEE8)
-internal val Red40 = Color(0xFFBA1A1A)
-internal val Red80 = Color(0xFFFFB4AB)
-internal val Red90 = Color(0xFFFFDAD6)
+private val DefaultSeedColor = Color(0xFF8B418F)
 
 // ──────────────────────────────────────────────
-// Color schemes
-// ──────────────────────────────────────────────
-
-private val LightDefaultColorScheme =
-    lightColorScheme(
-        primary = Purple40,
-        onPrimary = Color.White,
-        primaryContainer = Purple90,
-        onPrimaryContainer = Purple10,
-        secondary = Orange40,
-        onSecondary = Color.White,
-        secondaryContainer = Orange90,
-        onSecondaryContainer = Orange10,
-        tertiary = Blue40,
-        onTertiary = Color.White,
-        tertiaryContainer = Blue90,
-        onTertiaryContainer = Blue10,
-        error = Red40,
-        onError = Color.White,
-        errorContainer = Red90,
-        onErrorContainer = Blue10,
-        background = DarkPurpleGray99,
-        onBackground = DarkPurpleGray10,
-        surface = DarkPurpleGray99,
-        onSurface = DarkPurpleGray10,
-        surfaceVariant = PurpleGray90,
-        onSurfaceVariant = PurpleGray30,
-        inverseSurface = DarkPurpleGray10,
-        inverseOnSurface = DarkPurpleGray95,
-        outline = PurpleGray50,
-    )
-
-private val DarkDefaultColorScheme =
-    darkColorScheme(
-        primary = Purple80,
-        onPrimary = Purple10,
-        primaryContainer = Purple30,
-        onPrimaryContainer = Purple90,
-        secondary = Orange90,
-        onSecondary = Orange10,
-        tertiary = Blue90,
-        onTertiary = Blue10,
-        error = Red80,
-        onError = Blue10,
-        errorContainer = Red90,
-        background = DarkPurpleGray10,
-        onBackground = DarkPurpleGray90,
-        surface = DarkPurpleGray10,
-        onSurface = DarkPurpleGray90,
-        surfaceVariant = PurpleGray30,
-        onSurfaceVariant = PurpleGray80,
-        inverseSurface = DarkPurpleGray90,
-        inverseOnSurface = DarkPurpleGray10,
-        outline = PurpleGray60,
-    )
-
-// ──────────────────────────────────────────────
-// Theme extension: Background
+// Background / tint theme extensions (unchanged)
 // ──────────────────────────────────────────────
 
 @Immutable
@@ -131,10 +52,6 @@ data class BackgroundTheme(
 )
 
 val LocalBackgroundTheme = staticCompositionLocalOf { BackgroundTheme() }
-
-// ──────────────────────────────────────────────
-// Theme extension: Tint
-// ──────────────────────────────────────────────
 
 @Immutable
 data class TintTheme(
@@ -172,84 +89,99 @@ fun NiaBackground(
 }
 
 // ──────────────────────────────────────────────
-// Main theme
+// Main theme — materialKolor DynamicMaterialTheme driven by ThemePreferences
 // ──────────────────────────────────────────────
 
 @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.S)
 private fun supportsDynamicTheming() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
+/**
+ * The seed color actually used to derive the scheme. When the user hasn't picked a
+ * custom seed, follow the system accent on Android 12+ (preserving the prior
+ * dynamic-color behavior); otherwise fall back to the app default brand seed.
+ */
+@Composable
+private fun resolveSeedColor(prefs: ThemePreferences): Color {
+    prefs.seedColor?.let { return it }
+    return if (supportsDynamicTheming()) {
+        colorResource(android.R.color.system_accent1_200)
+    } else {
+        DefaultSeedColor
+    }
+}
+
+private fun resolveDarkTheme(prefs: ThemePreferences): Boolean? = when (prefs.mode) {
+    AppThemeMode.SYSTEM -> null
+    AppThemeMode.LIGHT -> false
+    AppThemeMode.DARK -> true
+}
+
 @Composable
 fun MindDumpTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    preferences: ThemePreferences,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
+    val systemDark = isSystemInDarkTheme()
+    val darkTheme = resolveDarkTheme(preferences) ?: systemDark
+    val seedColor = resolveSeedColor(preferences)
 
-    // Color scheme
-    val colorScheme =
-        when {
-            supportsDynamicTheming() -> {
-                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            }
-            darkTheme -> DarkDefaultColorScheme
-            else -> LightDefaultColorScheme
-        }
-
-    // Background theme
-    val backgroundTheme =
-        BackgroundTheme(
-            color = colorScheme.surface,
-            tonalElevation = 2.dp,
-        )
-
-    // Tint theme
-    val tintTheme =
-        if (supportsDynamicTheming()) {
-            TintTheme(colorScheme.primary)
-        } else {
-            TintTheme()
-        }
-
-    // Gradient colors
-    val gradientColors =
-        GradientColors(
-            primaryGradient = Pair(colorScheme.primary, colorScheme.tertiary),
-            cardGradient = Pair(colorScheme.surfaceContainerLow, colorScheme.surfaceContainer),
-            inputGradient = Pair(colorScheme.surfaceContainerHigh, colorScheme.surfaceContainerHighest),
-        )
-
-    // Reduced motion
+    // Reduced motion (does not depend on the color scheme).
     val reduceMotion = context.isReduceMotionEnabled()
     val animationDuration = rememberAnimationDuration(reduceMotion)
     val motionCurve = rememberMotionCurve(reduceMotion)
 
-    // Status bar
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            @Suppress("DEPRECATION")
-            window.statusBarColor = colorScheme.surface.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
-        }
-    }
-
-    // Shape tokens
     val shapes = ExpressiveShapes()
 
-    // Composition locals
-    CompositionLocalProvider(
-        LocalBackgroundTheme provides backgroundTheme,
-        LocalTintTheme provides tintTheme,
-        LocalGradientColors provides gradientColors,
-        LocalAnimationDuration provides animationDuration,
-        LocalMotionCurve provides motionCurve,
-        LocalExpressiveShapes provides shapes,
+    DynamicMaterialTheme(
+        seedColor = seedColor,
+        isDark = darkTheme,
+        isAmoled = preferences.amoled && darkTheme,
+        style = preferences.paletteStyle.toMaterialKolor(),
+        typography = AppTypography,
     ) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            typography = AppTypography,
-            content = content,
+        // Status bar — read inside the themed content so it reflects the generated scheme.
+        val view = LocalView.current
+        val surfaceColor = MaterialTheme.colorScheme.surface
+        if (!view.isInEditMode) {
+            SideEffect {
+                val window = (view.context as Activity).window
+                @Suppress("DEPRECATION")
+                window.statusBarColor = surfaceColor.toArgb()
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            }
+        }
+
+        // Provide the scheme-derived tokens inside DynamicMaterialTheme so they
+        // reflect the freshly generated color scheme.
+        val backgroundTheme = BackgroundTheme(
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
         )
+        val tintTheme = TintTheme(MaterialTheme.colorScheme.primary)
+        val gradientColors = GradientColors(
+            primaryGradient = Pair(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.tertiary,
+            ),
+            cardGradient = Pair(
+                MaterialTheme.colorScheme.surfaceContainerLow,
+                MaterialTheme.colorScheme.surfaceContainer,
+            ),
+            inputGradient = Pair(
+                MaterialTheme.colorScheme.surfaceContainerHigh,
+                MaterialTheme.colorScheme.surfaceContainerHighest,
+            ),
+        )
+        CompositionLocalProvider(
+            LocalBackgroundTheme provides backgroundTheme,
+            LocalTintTheme provides tintTheme,
+            LocalGradientColors provides gradientColors,
+            LocalAnimationDuration provides animationDuration,
+            LocalMotionCurve provides motionCurve,
+            LocalExpressiveShapes provides shapes,
+        ) {
+            content()
+        }
     }
 }

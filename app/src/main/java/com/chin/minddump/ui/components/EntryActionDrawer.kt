@@ -54,6 +54,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongParameterList") // Action drawer aggregates many callbacks by design
 fun EntryActionDrawer(
     entry: MindDumpEntry,
     currentSpace: Space,

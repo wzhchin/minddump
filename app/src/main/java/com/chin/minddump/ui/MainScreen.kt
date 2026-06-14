@@ -76,6 +76,7 @@ import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.RebuildDatabaseDialog
 import com.chin.minddump.ui.components.SettingsDialog
 import com.chin.minddump.ui.components.SpaceSelectionDialog
+import com.chin.minddump.ui.theme.AppThemeMode
 import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
 import com.chin.minddump.ui.theme.LocalExpressiveShapes
@@ -197,7 +198,14 @@ fun MainScreen(
     }
 
     // --- Theme + Layout ---
-    MindDumpTheme(darkTheme = uiState.isDarkTheme) {
+    // Private space forces a dark theme (privacy), overriding the user's mode pref.
+    val baseThemePrefs = viewModel.themePreferences.collectAsState().value
+    val themePrefs = if (uiState.isDarkTheme) {
+        baseThemePrefs.copy(mode = AppThemeMode.DARK)
+    } else {
+        baseThemePrefs
+    }
+    MindDumpTheme(preferences = themePrefs) {
         NiaBackground {
             Scaffold(
                 snackbarHost = {
@@ -231,99 +239,99 @@ fun MainScreen(
                             },
                         )
                     } else {
-                    CenterAlignedTopAppBar(
-                        title = {
-                            // Search field when expanded
-                            AnimatedVisibility(
-                                visible = searchExpanded,
-                                enter = expandHorizontally(
-                                    expandFrom = Alignment.Start,
-                                    animationSpec = tween(animDuration.medium),
-                                ) + fadeIn(tween(animDuration.medium)),
-                                exit = shrinkHorizontally(
-                                    shrinkTowards = Alignment.End,
-                                    animationSpec = tween(animDuration.medium),
-                                ) + fadeOut(tween(animDuration.medium)),
-                            ) {
-                                OutlinedTextField(
-                                    value = uiState.searchQuery,
-                                    onValueChange = { viewModel.updateSearchQuery(it) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(end = 8.dp),
-                                    placeholder = { Text(stringResource(R.string.search_placeholder)) },
-                                    singleLine = true,
-                                    shape = shapes.inputField,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = Color.Transparent,
-                                        unfocusedBorderColor = Color.Transparent,
-                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    ),
-                                    trailingIcon = {
-                                        if (uiState.searchQuery.isNotEmpty()) {
-                                            IconButton(onClick = {
-                                                viewModel.clearSearch()
-                                                searchExpanded = false
-                                            }) {
-                                                Icon(
-                                                    Icons.Filled.Search,
-                                                    contentDescription = stringResource(R.string.cancel),
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
+                        CenterAlignedTopAppBar(
+                            title = {
+                                // Search field when expanded
+                                AnimatedVisibility(
+                                    visible = searchExpanded,
+                                    enter = expandHorizontally(
+                                        expandFrom = Alignment.Start,
+                                        animationSpec = tween(animDuration.medium),
+                                    ) + fadeIn(tween(animDuration.medium)),
+                                    exit = shrinkHorizontally(
+                                        shrinkTowards = Alignment.End,
+                                        animationSpec = tween(animDuration.medium),
+                                    ) + fadeOut(tween(animDuration.medium)),
+                                ) {
+                                    OutlinedTextField(
+                                        value = uiState.searchQuery,
+                                        onValueChange = { viewModel.updateSearchQuery(it) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(end = 8.dp),
+                                        placeholder = { Text(stringResource(R.string.search_placeholder)) },
+                                        singleLine = true,
+                                        shape = shapes.inputField,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color.Transparent,
+                                            unfocusedBorderColor = Color.Transparent,
+                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        ),
+                                        trailingIcon = {
+                                            if (uiState.searchQuery.isNotEmpty()) {
+                                                IconButton(onClick = {
+                                                    viewModel.clearSearch()
+                                                    searchExpanded = false
+                                                }) {
+                                                    Icon(
+                                                        Icons.Filled.Search,
+                                                        contentDescription = stringResource(R.string.cancel),
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
                                             }
-                                        }
-                                    },
-                                )
-                            }
-                        },
-                        actions = {
-                            if (!searchExpanded) {
-                                // Search
-                                IconButton(onClick = {
-                                    haptics.perform(HapticPattern.Tick)
-                                    searchExpanded = true
-                                }) {
-                                    Icon(
-                                        Icons.Filled.Search,
-                                        contentDescription = stringResource(R.string.search_placeholder),
-                                        tint = LocalTintTheme.current.iconTint
-                                            .takeIf { it != Color.Unspecified }
-                                            ?: MaterialTheme.colorScheme.onSurface,
+                                        },
                                     )
                                 }
-                                // Statistics
-                                IconButton(onClick = {
-                                    haptics.perform(HapticPattern.Tick)
-                                    onNavigateToStatistics()
-                                }) {
-                                    Icon(
-                                        Icons.Filled.BarChart,
-                                        contentDescription = "统计",
-                                        tint = LocalTintTheme.current.iconTint
-                                            .takeIf { it != Color.Unspecified }
-                                            ?: MaterialTheme.colorScheme.onSurface,
-                                    )
+                            },
+                            actions = {
+                                if (!searchExpanded) {
+                                    // Search
+                                    IconButton(onClick = {
+                                        haptics.perform(HapticPattern.Tick)
+                                        searchExpanded = true
+                                    }) {
+                                        Icon(
+                                            Icons.Filled.Search,
+                                            contentDescription = stringResource(R.string.search_placeholder),
+                                            tint = LocalTintTheme.current.iconTint
+                                                .takeIf { it != Color.Unspecified }
+                                                ?: MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                    // Statistics
+                                    IconButton(onClick = {
+                                        haptics.perform(HapticPattern.Tick)
+                                        onNavigateToStatistics()
+                                    }) {
+                                        Icon(
+                                            Icons.Filled.BarChart,
+                                            contentDescription = "统计",
+                                            tint = LocalTintTheme.current.iconTint
+                                                .takeIf { it != Color.Unspecified }
+                                                ?: MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                    // Settings
+                                    IconButton(onClick = {
+                                        haptics.perform(HapticPattern.Tick)
+                                        viewModel.setShowSettings(true)
+                                    }) {
+                                        Icon(
+                                            Icons.Filled.Settings,
+                                            contentDescription = stringResource(R.string.settings),
+                                            tint = LocalTintTheme.current.iconTint
+                                                .takeIf { it != Color.Unspecified }
+                                                ?: MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
                                 }
-                                // Settings
-                                IconButton(onClick = {
-                                    haptics.perform(HapticPattern.Tick)
-                                    viewModel.setShowSettings(true)
-                                }) {
-                                    Icon(
-                                        Icons.Filled.Settings,
-                                        contentDescription = stringResource(R.string.settings),
-                                        tint = LocalTintTheme.current.iconTint
-                                            .takeIf { it != Color.Unspecified }
-                                            ?: MaterialTheme.colorScheme.onSurface,
-                                    )
-                                }
-                            }
-                        },
-                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                            containerColor = appBarContainerColor,
-                        ),
-                    )
+                            },
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                containerColor = appBarContainerColor,
+                            ),
+                        )
                     }
                 },
                 bottomBar = {
@@ -484,6 +492,11 @@ fun MainScreen(
             if (uiState.showSettings) {
                 SettingsDialog(
                     workDir = uiState.workDir,
+                    themePreferences = baseThemePrefs,
+                    onSeedColorChange = { color -> viewModel.setSeedColor(color) },
+                    onPaletteStyleChange = { style -> viewModel.setPaletteStyle(style) },
+                    onThemeModeChange = { mode -> viewModel.setThemeMode(mode) },
+                    onAmoledChange = { enabled -> viewModel.setAmoled(enabled) },
                     onChangeDir = { dirPickerLauncher.launch(null) },
                     onRebuildDatabase = { viewModel.showRebuildDatabaseDialog() },
                     onDismiss = { viewModel.setShowSettings(false) },

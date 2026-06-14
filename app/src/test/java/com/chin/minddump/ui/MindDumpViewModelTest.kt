@@ -1,7 +1,9 @@
 package com.chin.minddump.ui
 
 import com.chin.minddump.data.MindDumpRepository
+import com.chin.minddump.data.ThemePreferencesRepository
 import com.chin.minddump.storage.Space
+import com.chin.minddump.ui.theme.ThemePreferences
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -40,7 +42,11 @@ class MindDumpViewModelTest {
         kotlinx.coroutines.Dispatchers.resetMain()
     }
 
-    private fun createViewModel(): MindDumpViewModel = MindDumpViewModel(mockRepository, mockk(relaxed = true))
+    private fun createViewModel(): MindDumpViewModel {
+        val themeRepo = mockk<ThemePreferencesRepository>(relaxed = true)
+        every { themeRepo.preferences } returns flowOf(ThemePreferences())
+        return MindDumpViewModel(mockRepository, themeRepo, mockk(relaxed = true))
+    }
 
     @Test
     fun `initial state is Public and not dark theme`() {

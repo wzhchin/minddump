@@ -92,4 +92,37 @@
 
     <!-- Entry type display names -->
     <string name="photo">Photo</string>
+
+    <!-- Theme settings -->
+    <string name="theme_section">Appearance</string>
+    <string name="theme_customize">Customize theme</string>
+    <string name="theme_seed_color">Seed color</string>
+    <string name="theme_seed_system">Follow system</string>
+    <string name="theme_palette_style">Palette style</string>
+    <string name="theme_mode">Dark mode</string>
+    <string name="theme_mode_system">Follow system</string>
+    <string name="theme_mode_light">Light</string>
+    <string name="theme_mode_dark">Dark</string>
+    <string name="theme_amoled">True black (AMOLED)</string>
+
+    <!-- Palette style display names -->
+    <string name="palette_tonal_spot">Tonal Spot</string>
+    <string name="palette_neutral">Neutral</string>
+    <string name="palette_vibrant">Vibrant</string>
+    <string name="palette_expressive">Expressive</string>
+    <string name="palette_rainbow">Rainbow</string>
+    <string name="palette_fruit_salad">Fruit Salad</string>
+    <string name="palette_monochrome">Monochrome</string>
+    <string name="palette_fidelity">Fidelity</string>
+    <string name="palette_content">Content</string>
+
+    <!-- Seed color presets -->
+    <string name="color_red">Red</string>
+    <string name="color_orange">Orange</string>
+    <string name="color_yellow">Yellow</string>
+    <string name="color_green">Green</string>
+    <string name="color_teal">Teal</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_purple">Purple</string>
+    <string name="color_pink">Pink</string>
 </resources>

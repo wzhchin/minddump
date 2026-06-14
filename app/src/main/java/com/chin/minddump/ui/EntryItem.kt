@@ -88,11 +88,15 @@ import java.time.format.DateTimeFormatter
 sealed interface FeedItem {
     val sortKey: Long
 
-    data class Loose(val grouped: GroupedEntry) : FeedItem {
+    data class Loose(
+        val grouped: GroupedEntry
+    ) : FeedItem {
         override val sortKey: Long get() = grouped.entry.file.lastModified()
     }
 
-    data class GroupCard(val summary: GroupSummary) : FeedItem {
+    data class GroupCard(
+        val summary: GroupSummary
+    ) : FeedItem {
         override val sortKey: Long get() = summary.latestModified
     }
 }
@@ -327,8 +331,6 @@ fun GroupSummaryCard(
         }
     }
 }
-
-
 
 /**
  * Renders a file entry with its comments nested inside the same bubble.

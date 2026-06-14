@@ -1,5 +1,6 @@
 package com.chin.minddump.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,25 +12,40 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.R
+import com.chin.minddump.ui.theme.AppPaletteStyle
+import com.chin.minddump.ui.theme.AppThemeMode
 import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalExpressiveShapes
+import com.chin.minddump.ui.theme.ThemePreferences
 import com.chin.minddump.ui.theme.rememberPremiumHaptics
 
+@Suppress("LongParameterList")
 @Composable
 fun SettingsDialog(
     workDir: String,
+    themePreferences: ThemePreferences,
+    onSeedColorChange: (Color?) -> Unit,
+    onPaletteStyleChange: (AppPaletteStyle) -> Unit,
+    onThemeModeChange: (AppThemeMode) -> Unit,
+    onAmoledChange: (Boolean) -> Unit,
     onChangeDir: () -> Unit,
     onRebuildDatabase: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
+    var themeExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -56,6 +72,32 @@ fun SettingsDialog(
                     Text(stringResource(R.string.change_directory))
                 }
 
+                // ── Theme customization (collapsible) ──
+                Text(
+                    stringResource(R.string.theme_section),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                OutlinedButton(
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        themeExpanded = !themeExpanded
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.theme_customize))
+                }
+                AnimatedVisibility(visible = themeExpanded) {
+                    ThemeSettingsPanel(
+                        preferences = themePreferences,
+                        onSeedColorChange = onSeedColorChange,
+                        onPaletteStyleChange = onPaletteStyleChange,
+                        onModeChange = onThemeModeChange,
+                        onAmoledChange = onAmoledChange,
+                    )
+                }
+
+                // ── Database rebuild ──
                 OutlinedButton(
                     onClick = {
                         haptics.perform(HapticPattern.Tick)

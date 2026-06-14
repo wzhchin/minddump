@@ -8,11 +8,15 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chin.minddump.data.MindDumpRepository
+import com.chin.minddump.data.ThemePreferencesRepository
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.ShareItem
 import com.chin.minddump.storage.Space
+import com.chin.minddump.ui.theme.AppPaletteStyle
+import com.chin.minddump.ui.theme.AppThemeMode
+import com.chin.minddump.ui.theme.ThemePreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +33,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
+import androidx.compose.ui.graphics.Color
 
 /**
  * A file entry with its associated comments nested.
@@ -111,6 +116,7 @@ class MindDumpViewModel
     @Inject
     constructor(
         private val repository: MindDumpRepository,
+        private val themePreferencesRepository: ThemePreferencesRepository,
         @ApplicationContext context: Context,
     ) : ViewModel() {
 
@@ -118,6 +124,14 @@ class MindDumpViewModel
 
         private val _uiState = MutableStateFlow(MindDumpUiState())
         val uiState: StateFlow<MindDumpUiState> = _uiState.asStateFlow()
+
+        /** Theme preferences, reactively collected for the theme composable + settings UI. */
+        val themePreferences: StateFlow<ThemePreferences> =
+            themePreferencesRepository.preferences.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = ThemePreferences(),
+            )
 
         // Track current space and search query as flows
         private val currentSpaceFlow = MutableStateFlow(Space.PUBLIC)
@@ -598,14 +612,15 @@ class MindDumpViewModel
          * Save an edited entry's new text back to its file. Returns true on success,
          * false if the encrypted session is locked (caller toasts and keeps editing).
          */
-        suspend fun saveEntryEdit(entry: MindDumpEntry, newText: String): Boolean {
-            return when (val result = repository.saveEntryEdit(entry, newText)) {
-                is MindDumpRepository.EditSaveResult.Saved -> {
-                    refreshEntries()
-                    true
-                }
-                MindDumpRepository.EditSaveResult.Locked -> false
+        suspend fun saveEntryEdit(
+            entry: MindDumpEntry,
+            newText: String
+        ): Boolean = when (val result = repository.saveEntryEdit(entry, newText)) {
+            is MindDumpRepository.EditSaveResult.Saved -> {
+                refreshEntries()
+                true
             }
+            MindDumpRepository.EditSaveResult.Locked -> false
         }
 
         /** Load the plaintext content of an entry for editor pre-fill. */
@@ -787,6 +802,24 @@ class MindDumpViewModel
 
         fun setShowSettings(show: Boolean) {
             _uiState.update { it.copy(showSettings = show) }
+        }
+
+        // ── Theme preferences ──
+
+        fun setSeedColor(color: Color?) {
+            viewModelScope.launch { themePreferencesRepository.setSeedColor(color) }
+        }
+
+        fun setPaletteStyle(style: AppPaletteStyle) {
+            viewModelScope.launch { themePreferencesRepository.setPaletteStyle(style) }
+        }
+
+        fun setAmoled(enabled: Boolean) {
+            viewModelScope.launch { themePreferencesRepository.setAmoled(enabled) }
+        }
+
+        fun setThemeMode(mode: AppThemeMode) {
+            viewModelScope.launch { themePreferencesRepository.setMode(mode) }
         }
 
         fun showRebuildDatabaseDialog() {

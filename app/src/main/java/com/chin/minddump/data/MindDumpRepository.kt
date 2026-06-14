@@ -221,7 +221,9 @@ class MindDumpRepository
          * open instead of discarding the user's text.
          */
         sealed interface EditSaveResult {
-            data class Saved(val entry: MindDumpEntry) : EditSaveResult
+            data class Saved(
+                val entry: MindDumpEntry
+            ) : EditSaveResult
             data object Locked : EditSaveResult
         }
 

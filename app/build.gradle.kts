@@ -5,16 +5,25 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.detekt)
     alias(libs.plugins.ktlint)
+    alias(libs.plugins.room3)
 }
 
 android {
     namespace = "com.chin.minddump"
-    compileSdk = 35
+    val sdkVersion = libs.versions.compileSdk
+        .get()
+        .toInt()
+    compileSdk = sdkVersion
 
     defaultConfig {
         applicationId = "com.chin.minddump"
-        minSdk = 29
-        targetSdk = 35
+        minSdk = libs.versions.minSdk
+            .get()
+            .toInt()
+        val targetSdkVersion = libs.versions.targetSdk
+            .get()
+            .toInt()
+        targetSdk = targetSdkVersion
         versionCode = 1
         versionName = "1.0"
     }
@@ -41,13 +50,13 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlin {
         compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         }
     }
 
@@ -55,10 +64,10 @@ android {
         compose = true
         buildConfig = true
     }
+}
 
-    ksp {
-        arg("room.schemaLocation", "$projectDir/schemas")
-    }
+room3 {
+    schemaDirectory("$projectDir/schemas")
 }
 
 detekt {
@@ -81,8 +90,7 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.navigation.compose)
 
-    // Compose
-    implementation(platform(libs.compose.bom))
+    // Compose (pinned directly, no BOM — material3 1.5.0-alpha21 needs Compose 1.11.x)
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
@@ -118,16 +126,21 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
-    // Room
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
+    // Room3
+    implementation(libs.room3.runtime)
+    ksp(libs.room3.compiler)
+
+    // materialKolor — seed-color + palette-style dynamic theming
+    implementation(libs.materialkolor)
+
+    // DataStore — theme preferences persistence
+    implementation(libs.datastore.preferences)
 
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.turbine)
     testImplementation(libs.coroutines.test)
-    testImplementation(libs.room.testing)
+    testImplementation(libs.room3.testing)
     kspTest(libs.hilt.compiler)
 }

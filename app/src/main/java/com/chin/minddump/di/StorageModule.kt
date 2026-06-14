@@ -1,9 +1,7 @@
 package com.chin.minddump.di
 
 import android.content.Context
-import androidx.room.Room
-import com.chin.minddump.data.MIGRATION_1_2
-import com.chin.minddump.data.MIGRATION_2_3
+import androidx.room3.Room
 import com.chin.minddump.data.MindDumpDatabase
 import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.security.CryptoEngine
@@ -37,14 +35,19 @@ object StorageModule {
     @Singleton
     fun provideDatabase(
         @ApplicationContext context: Context,
-    ): MindDumpDatabase =
-        Room
-            .databaseBuilder(
-                context,
-                MindDumpDatabase::class.java,
-                "minddump.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+    ): MindDumpDatabase {
+        val appContext = context.applicationContext
+        val dbFile = appContext.getDatabasePath("minddump.db")
+        // Room3 has no legacy SupportSQLiteDatabase Migration-callback API, and the
+        // filesystem is the source of truth (Room is an index cache). Any schema change
+        // — including an upgrade from the Room 2.x DB an existing user may already have
+        // on disk — is handled by a destructive rebuild repopulated from disk via the
+        // database-rebuild capability, rather than hand-written migrations.
+        return Room
+            .databaseBuilder<MindDumpDatabase>(context, dbFile.absolutePath)
+            .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
+    }
 
     @Provides
     @Singleton

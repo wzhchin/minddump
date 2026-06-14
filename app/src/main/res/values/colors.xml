@@ -1,34 +1,8 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="md_primary">#FF1B6B4A</color>
-    <color name="md_on_primary">#FFFFFFFF</color>
-    <color name="md_primary_container">#FFA4F5C8</color>
-    <color name="md_on_primary_container">#FF002112</color>
-    <color name="md_secondary">#FF4E6355</color>
-    <color name="md_on_secondary">#FFFFFFFF</color>
-    <color name="md_secondary_container">#FFD0E8D6</color>
-    <color name="md_on_secondary_container">#FF0B1F15</color>
-    <color name="md_background">#FFFBFDF8</color>
-    <color name="md_on_background">#FF191C1A</color>
-    <color name="md_surface">#FFFBFDF8</color>
-    <color name="md_on_surface">#FF191C1A</color>
-    <color name="md_surface_variant">#FFDDE5DB</color>
-    <color name="md_on_surface_variant">#FF414942</color>
-
-    <!-- Dark theme -->
-    <color name="md_dark_primary">#FF88D8AD</color>
-    <color name="md_dark_on_primary">#FF003822</color>
-    <color name="md_dark_primary_container">#FF005234</color>
-    <color name="md_dark_on_primary_container">#FFA4F5C8</color>
-    <color name="md_dark_secondary">#FFB4CCBA</color>
-    <color name="md_dark_on_secondary">#FF203529</color>
-    <color name="md_dark_secondary_container">#FF374B3F</color>
-    <color name="md_dark_on_secondary_container">#FFD0E8D6</color>
-    <color name="md_dark_background">#FF191C1A</color>
-    <color name="md_dark_on_background">#FFE1E3DE</color>
-    <color name="md_dark_surface">#FF191C1A</color>
-    <color name="md_dark_on_surface">#FFE1E3DE</color>
-    <color name="md_dark_surface_variant">#FF414942</color>
-    <color name="md_dark_on_surface_variant">#FFC1C9C0</color>
+    <!-- Adaptive launcher icon background. The in-app color scheme is derived from the
+         user's theme seed via materialKolor (see ui/Theme.kt); the launcher icon keeps a
+         fixed brand color since launcher icons don't track the in-app seed. -->
+    <color name="md_primary">#FF8B418F</color>
 </resources>
