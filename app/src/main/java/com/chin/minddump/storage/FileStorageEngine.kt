@@ -98,12 +98,15 @@ class FileStorageEngine(
     /**
      * Save a text entry as Markdown.
      * Produces: {yymm-dd-HHMMSS}-f.md
+     * [targetDir] overrides the destination (e.g. an open group directory); when
+     * null the entry is written to the current month directory as before.
      */
     fun saveTextEntry(
         space: Space,
         content: String,
+        targetDir: File? = null,
     ): File {
-        val dir = ensureCurrentMonthDir(space)
+        val dir = targetDir ?: ensureCurrentMonthDir(space)
         val file = uniqueFile(dir, "${nowTimestampStr()}-f", "md")
         file.writeText(content)
         return file
@@ -121,8 +124,8 @@ class FileStorageEngine(
      * Get the output file for a recording.
      * Produces: {yymm-dd-HHMMSS}-f.m4a
      */
-    fun getRecordingFile(space: Space): File {
-        val dir = ensureCurrentMonthDir(space)
+    fun getRecordingFile(space: Space, targetDir: File? = null): File {
+        val dir = targetDir ?: ensureCurrentMonthDir(space)
         return uniqueFile(dir, "${nowTimestampStr()}-f", "m4a")
     }
 
@@ -130,8 +133,8 @@ class FileStorageEngine(
      * Get the output file for a photo.
      * Produces: {yymm-dd-HHMMSS}-f.jpg
      */
-    fun getPhotoFile(space: Space): File {
-        val dir = ensureCurrentMonthDir(space)
+    fun getPhotoFile(space: Space, targetDir: File? = null): File {
+        val dir = targetDir ?: ensureCurrentMonthDir(space)
         return uniqueFile(dir, "${nowTimestampStr()}-f", "jpg")
     }
 
@@ -139,8 +142,8 @@ class FileStorageEngine(
      * Get the output file for a video.
      * Produces: {yymm-dd-HHMMSS}-f.mp4
      */
-    fun getVideoFile(space: Space): File {
-        val dir = ensureCurrentMonthDir(space)
+    fun getVideoFile(space: Space, targetDir: File? = null): File {
+        val dir = targetDir ?: ensureCurrentMonthDir(space)
         return uniqueFile(dir, "${nowTimestampStr()}-f", "mp4")
     }
 
@@ -172,11 +175,13 @@ class FileStorageEngine(
     }
 
     /**
-     * Create a group directory under the current month.
+     * Create a group directory. With [parentDir] == null it is created under the
+     * current month (legacy behavior); with a non-null [parentDir] it is created
+     * inside that group directory, enabling nesting.
      * Produces: {yymm-dd-HHMMSS}-g[-{name}]/
      */
-    fun createGroup(space: Space, name: String?): File {
-        val dir = ensureCurrentMonthDir(space)
+    fun createGroup(space: Space, name: String?, parentDir: File? = null): File {
+        val dir = parentDir ?: ensureCurrentMonthDir(space)
         val suffix = if (name.isNullOrBlank()) "g" else "g-$name"
         var groupDir = File(dir, "${nowTimestampStr()}-$suffix")
         var seq = 1
@@ -200,37 +205,44 @@ class FileStorageEngine(
     }
 
     /**
-     * Move a file out of its group directory back to the parent month directory.
+     * Move a file out of its group directory. If the group is nested (its parent
+     * is itself a group), the file moves into that parent group; otherwise it
+     * moves to the month directory.
      */
     @Suppress("UNUSED_PARAMETER")
     fun moveOutOfGroup(file: File, space: Space): File {
-        // Parent of group dir is the month dir
-        val monthDir = file.parentFile?.parentFile
+        val groupDir = file.parentFile
             ?: error("File is not inside a group directory: ${file.absolutePath}")
-        val dest = File(monthDir, file.name)
+        val destParent = dissolveDestination(groupDir)
+        val dest = File(destParent, file.name)
         val moved = file.renameTo(dest)
         check(moved) { "Failed to move ${file.absolutePath} out of group" }
         return dest
     }
 
     /**
-     * Dissolve a group: move every member back into the parent month directory,
-     * then remove the now-empty group directory. Files are preserved.
+     * Where members of [groupDir] should go when it is dissolved: its parent
+     * directory (the parent group if nested, else the month directory).
+     */
+    private fun dissolveDestination(groupDir: File): File =
+        groupDir.parentFile ?: error("Group directory has no parent: ${groupDir.absolutePath}")
+
+    /**
+     * Dissolve a group: move every member (loose files and sub-group directories)
+     * into the group's parent location, then remove the now-empty group directory.
+     * Nesting-aware — members of a sub-group move into the parent group, not the
+     * month directory.
      *
-     * On a per-file failure, the exception propagates and any files already
-     * moved remain in the month directory (reconcile will re-index them).
+     * On a per-item failure, the exception propagates and any items already moved
+     * remain at their destination (reconcile will re-index them).
      */
     fun dissolveGroup(groupDir: File) {
-        val monthDir = groupDir.parentFile
-            ?: error("Group directory has no parent: ${groupDir.absolutePath}")
-        groupDir
-            .listFiles()
-            ?.filter { it.isFile }
-            ?.forEach { file ->
-                val dest = File(monthDir, file.name)
-                val moved = file.renameTo(dest)
-                check(moved) { "Failed to move ${file.absolutePath} out of group ${groupDir.absolutePath}" }
-            }
+        val destParent = dissolveDestination(groupDir)
+        groupDir.listFiles()?.forEach { child ->
+            val dest = File(destParent, child.name)
+            val moved = child.renameTo(dest)
+            check(moved) { "Failed to move ${child.absolutePath} out of group ${groupDir.absolutePath}" }
+        }
         val deleted = groupDir.delete()
         check(deleted) { "Failed to delete group directory ${groupDir.absolutePath}" }
     }
@@ -263,12 +275,17 @@ class FileStorageEngine(
 
     /**
      * Scan group directories in the current month for a given space.
+     * Equivalent to scanning the current month directory's children.
      */
-    fun scanGroups(space: Space): List<File> {
-        val monthDir = getCurrentMonthDir(space)
-        if (!monthDir.exists()) return emptyList()
+    fun scanGroups(space: Space): List<File> = scanChildGroups(getCurrentMonthDir(space))
 
-        return monthDir
+    /**
+     * List the direct group sub-directories under [parentDir] (a month dir or a
+     * group dir). Powers both month-top group cards and nested sub-group cards.
+     */
+    fun scanChildGroups(parentDir: File): List<File> {
+        if (!parentDir.exists()) return emptyList()
+        return parentDir
             .listFiles()
             ?.filter { it.isDirectory && FileMetadata.fromFile(it)?.role == EntryRole.GROUP }
             ?: emptyList()

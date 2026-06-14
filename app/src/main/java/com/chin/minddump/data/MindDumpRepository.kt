@@ -89,11 +89,17 @@ class MindDumpRepository
 
         /**
          * Save a text entry: write file + encrypt if Private + insert Room row.
+         * [targetGroupDir] non-null writes the entry directly into that group
+         * directory and stamps its `groupPath`; null writes to the month top.
          */
-        suspend fun saveTextEntry(space: Space, content: String): MindDumpEntry =
+        suspend fun saveTextEntry(
+            space: Space,
+            content: String,
+            targetGroupDir: File? = null,
+        ): MindDumpEntry =
             withContext(Dispatchers.IO) {
                 Timber.d("Saving text entry in %s space", space.name)
-                val file = storageEngine.saveTextEntry(space, content)
+                val file = storageEngine.saveTextEntry(space, content, targetGroupDir)
                 val finalFile = encryptIfNeeded(file, space)
                 val meta = FileMetadata.fromFile(finalFile)!!
                 val isEncrypted = meta.isEncrypted
@@ -101,9 +107,10 @@ class MindDumpRepository
                     file = finalFile,
                     type = meta.entryType,
                     space = space,
-                    monthFolder = finalFile.parentFile?.name ?: "",
+                    monthFolder = monthFolderOf(finalFile),
                     timestamp = meta.timestamp,
                     role = EntryRole.FILE,
+                    groupPath = targetGroupDir?.absolutePath,
                 )
                 dao.insert(
                     entry.toEntity(
@@ -115,22 +122,22 @@ class MindDumpRepository
             }
 
         /**
-         * Get recording file.
+         * Get recording file. [targetGroupDir] non-null targets an open group.
          */
-        fun getRecordingFile(space: Space): File =
-            storageEngine.getRecordingFile(space)
+        fun getRecordingFile(space: Space, targetGroupDir: File? = null): File =
+            storageEngine.getRecordingFile(space, targetGroupDir)
 
         /**
-         * Get photo file.
+         * Get photo file. [targetGroupDir] non-null targets an open group.
          */
-        fun getPhotoFile(space: Space): File =
-            storageEngine.getPhotoFile(space)
+        fun getPhotoFile(space: Space, targetGroupDir: File? = null): File =
+            storageEngine.getPhotoFile(space, targetGroupDir)
 
         /**
-         * Get video file.
+         * Get video file. [targetGroupDir] non-null targets an open group.
          */
-        fun getVideoFile(space: Space): File =
-            storageEngine.getVideoFile(space)
+        fun getVideoFile(space: Space, targetGroupDir: File? = null): File =
+            storageEngine.getVideoFile(space, targetGroupDir)
 
         /**
          * Register a media file in Room after capture.
@@ -145,9 +152,10 @@ class MindDumpRepository
                     file = finalFile,
                     type = meta.entryType,
                     space = space,
-                    monthFolder = finalFile.parentFile?.name ?: "",
+                    monthFolder = monthFolderOf(finalFile),
                     timestamp = meta.timestamp,
                     role = EntryRole.FILE,
+                    groupPath = groupPathOf(finalFile),
                 )
                 dao.insert(entry.toEntity(isEncrypted = isEncrypted))
             }
@@ -165,9 +173,10 @@ class MindDumpRepository
                     file = finalFile,
                     type = meta.entryType,
                     space = space,
-                    monthFolder = finalFile.parentFile?.name ?: "",
+                    monthFolder = monthFolderOf(finalFile),
                     timestamp = meta.timestamp,
                     role = EntryRole.FILE,
+                    groupPath = groupPathOf(finalFile),
                 )
                 dao.insert(entry.toEntity(isEncrypted = isEncrypted))
                 entry
@@ -274,31 +283,39 @@ class MindDumpRepository
         /**
          * Create a new group and return its directory.
          */
-        suspend fun createGroup(space: Space, name: String?): File =
+        suspend fun createGroup(space: Space, name: String?, parentGroupDir: File? = null): File =
             withContext(Dispatchers.IO) {
-                storageEngine.createGroup(space, name)
+                storageEngine.createGroup(space, name, parentGroupDir)
             }
 
         /**
          * Create a group and move an entry into it in one operation.
+         * [parentGroupDir] non-null creates a sub-group under it.
          */
-        suspend fun createAndMoveToGroup(entry: MindDumpEntry, space: Space, name: String?): File =
+        suspend fun createAndMoveToGroup(
+            entry: MindDumpEntry,
+            space: Space,
+            name: String?,
+            parentGroupDir: File? = null,
+        ): File =
             withContext(Dispatchers.IO) {
-                val groupDir = storageEngine.createGroup(space, name)
+                val groupDir = storageEngine.createGroup(space, name, parentGroupDir)
                 moveToGroup(entry, groupDir)
                 groupDir
             }
 
         /**
          * Create a group and move a batch of entries into it.
+         * [parentGroupDir] non-null creates a sub-group under it.
          */
         suspend fun createAndMoveGroupForEntries(
             entries: List<MindDumpEntry>,
             space: Space,
             name: String?,
+            parentGroupDir: File? = null,
         ): File =
             withContext(Dispatchers.IO) {
-                val groupDir = storageEngine.createGroup(space, name)
+                val groupDir = storageEngine.createGroup(space, name, parentGroupDir)
                 entries.forEach { moveToGroup(it, groupDir) }
                 groupDir
             }
@@ -568,6 +585,13 @@ class MindDumpRepository
         fun scanGroups(space: Space): List<File> =
             storageEngine.scanGroups(space)
 
+        /**
+         * Scan the direct sub-group directories under [parentDir] (a group page's
+         * nested sub-groups, or a month directory's top-level groups).
+         */
+        fun scanChildGroups(parentDir: File): List<File> =
+            storageEngine.scanChildGroups(parentDir)
+
         // --- Work directory delegation ---
 
         fun hasStoragePermission(): Boolean = storageEngine.hasStoragePermission()
@@ -616,6 +640,29 @@ class MindDumpRepository
         private fun encryptIfNeeded(file: File, space: Space): File {
             if (space != Space.PRIVATE || sessionPassword == null) return file
             return encryptFile(file, sessionPassword!!)
+        }
+
+        /**
+         * Resolve the YYYY-MM month folder for a file, walking up from nested
+         * group directories to the month directory that contains them.
+         */
+        private fun monthFolderOf(file: File): String {
+            val monthPattern = Regex("""^\d{4}-\d{2}$""")
+            var node: File? = file.parentFile
+            while (node != null) {
+                if (monthPattern.matches(node.name)) return node.name
+                node = node.parentFile
+            }
+            return file.parentFile?.name ?: ""
+        }
+
+        /**
+         * The immediate containing group directory for [file], or null if it sits
+         * directly in a month directory. Determined from the parent dir's role.
+         */
+        private fun groupPathOf(file: File): String? {
+            val parent = file.parentFile ?: return null
+            return if (FileMetadata.fromFile(parent)?.role == EntryRole.GROUP) parent.absolutePath else null
         }
 
         private fun contentPreviewOf(entry: MindDumpEntry): String =
