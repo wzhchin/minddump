@@ -438,6 +438,9 @@ fun MainScreen(
                     onSetStatus = { state ->
                         viewModel.setEntryStatus(entry, state)
                     },
+                    onAddComment = { content ->
+                        viewModel.addComment(entry, content)
+                    },
                     onDismiss = { viewModel.clearEntryAction() },
                 )
             }

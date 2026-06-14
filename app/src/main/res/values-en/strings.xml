@@ -147,6 +147,8 @@
     <string name="comments_collapse">▾ Hide comments</string>
     <string name="comment_label">Comment</string>
     <string name="orphan_comment">Original file deleted</string>
+    <string name="add_comment">Add comment</string>
+    <string name="comment_dialog_placeholder">Write a comment…</string>
     <string name="pin">Pin</string>
     <string name="unpin">Unpin</string>
     <string name="todo_status">Todo status</string>

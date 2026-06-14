@@ -147,6 +147,8 @@
     <string name="comments_collapse">▾ 收起评论</string>
     <string name="comment_label">评论</string>
     <string name="orphan_comment">原始文件已删除</string>
+    <string name="add_comment">添加评论</string>
+    <string name="comment_dialog_placeholder">写评论…</string>
     <string name="pin">置顶</string>
     <string name="unpin">取消置顶</string>
     <string name="todo_status">待办状态</string>

@@ -546,6 +546,19 @@ class MindDumpViewModel
             }
         }
 
+        /**
+         * Create a comment targeting [targetEntry]. Blank content is ignored.
+         * The comment lands in the target's directory as `{targetTs}-n-{nowTs}.md`
+         * and refreshes the current scope so it appears in the parent card's folded list.
+         */
+        fun addComment(targetEntry: MindDumpEntry, content: String) {
+            if (content.isBlank()) return
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.saveComment(_uiState.value.currentSpace, targetEntry, content)
+                refreshForCurrentScope()
+            }
+        }
+
         fun moveToGroup(entry: MindDumpEntry, groupDir: File) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.moveToGroup(entry, groupDir)

@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
@@ -60,9 +61,10 @@ import java.io.File
 // Entry Action Drawer (Task 5.1)
 // ──────────────────────────────────────────────
 
+// Action drawer aggregates many callbacks + their conditional sub-dialogs by design.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-@Suppress("LongParameterList") // Action drawer aggregates many callbacks by design
+@Suppress("LongParameterList", "LongMethod")
 fun EntryActionDrawer(
     entry: MindDumpEntry,
     currentSpace: Space,
@@ -77,6 +79,7 @@ fun EntryActionDrawer(
     onMoveOutOfGroup: (() -> Unit)? = null,
     onTogglePin: (() -> Unit)? = null,
     onSetStatus: ((TodoState) -> Unit)? = null,
+    onAddComment: ((String) -> Unit)? = null,
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
@@ -86,6 +89,7 @@ fun EntryActionDrawer(
     var showGroupPicker by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showStatusPicker by remember { mutableStateOf(false) }
+    var showCommentDialog by remember { mutableStateOf(false) }
 
     val isComment = entry.role == EntryRole.COMMENT
 
@@ -138,6 +142,17 @@ fun EntryActionDrawer(
                     onClick = {
                         haptics.perform(HapticPattern.Tick)
                         showStatusPicker = true
+                    },
+                )
+            }
+            // Add comment — comments cannot target other comments.
+            if (!isComment && onAddComment != null) {
+                ActionItem(
+                    icon = Icons.AutoMirrored.Filled.Comment,
+                    label = stringResource(R.string.add_comment),
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        showCommentDialog = true
                     },
                 )
             }
@@ -254,6 +269,17 @@ fun EntryActionDrawer(
             onDismiss = { showStatusPicker = false },
         )
     }
+
+    if (showCommentDialog) {
+        CommentDialog(
+            onConfirm = { content ->
+                onAddComment?.invoke(content)
+                showCommentDialog = false
+                onDismiss()
+            },
+            onDismiss = { showCommentDialog = false },
+        )
+    }
 }
 
 /** Localized label for a [TodoState], used in badges and the status picker. */
@@ -363,6 +389,48 @@ fun RenameDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("取消")
+            }
+        },
+    )
+}
+
+// ──────────────────────────────────────────────
+// Comment Dialog
+// ──────────────────────────────────────────────
+
+@Composable
+fun CommentDialog(
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shapes = LocalExpressiveShapes.current
+    var content by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = shapes.cardMedium,
+        title = { Text(stringResource(R.string.add_comment)) },
+        text = {
+            OutlinedTextField(
+                value = content,
+                onValueChange = { content = it },
+                placeholder = { Text(stringResource(R.string.comment_dialog_placeholder)) },
+                minLines = 3,
+                maxLines = 6,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = content.isNotBlank(),
+                onClick = { onConfirm(content.trim()) },
+            ) {
+                Text(stringResource(R.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
             }
         },
     )
