@@ -38,9 +38,11 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -60,9 +62,12 @@ import androidx.compose.ui.unit.dp
 import com.chin.minddump.R
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
+import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
+import com.chin.minddump.storage.TodoState
 import com.chin.minddump.ui.components.DocumentChip
 import com.chin.minddump.ui.components.EntryCard
+import com.chin.minddump.ui.components.statusLabel
 import com.chin.minddump.ui.GroupedEntry
 import com.chin.minddump.ui.GroupSummary
 import com.chin.minddump.ui.components.ZoomableAsyncImage
@@ -246,6 +251,9 @@ fun GroupSummaryCard(
     val mediaMembers = summary.memberEntries
         .filter { it.type == EntryType.PHOTO || it.type == EntryType.VIDEO }
         .sortedByDescending { it.file.lastModified() }
+    val groupMeta = FileMetadata.fromFile(summary.groupDir)
+    val isPinned = groupMeta?.isPinned == true
+    val todoState = groupMeta?.todoState ?: TodoState.NONE
 
     EntryCard(
         onClick = {
@@ -291,6 +299,31 @@ fun GroupSummaryCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            // Pin indicator for pinned groups
+            if (isPinned) {
+                Icon(
+                    imageVector = Icons.Filled.PushPin,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            // Todo status badge for statused groups
+            if (todoState != TodoState.NONE) {
+                Surface(
+                    shape = CircleShape,
+                    color = statusBadgeColor(todoState),
+                ) {
+                    Text(
+                        text = statusLabel(todoState),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
             Text(
                 text = stringResource(R.string.group_member_count, summary.memberEntries.size),
                 style = MaterialTheme.typography.labelMedium,
@@ -655,6 +688,36 @@ private fun EntryCardHeader(entry: MindDumpEntry, showLock: Boolean = true) {
 
         Spacer(modifier = Modifier.weight(1f))
 
+        // Pin indicator for pinned entries
+        if (entry.isPinned) {
+            Icon(
+                imageVector = Icons.Filled.PushPin,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+
+        // Todo status badge for statused entries
+        if (entry.todoState != TodoState.NONE) {
+            val isClosed = entry.todoState == TodoState.DONE || entry.todoState == TodoState.CANCEL
+            Surface(
+                shape = CircleShape,
+                color = statusBadgeColor(entry.todoState),
+            ) {
+                Text(
+                    text = statusLabel(entry.todoState),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(
+                        alpha = if (isClosed) 0.6f else 1f,
+                    ),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+
         // Lock icon for encrypted entries
         if (showLock && (entry.file.name.contains("enc") || entry.file.extension == "enc")) {
             Icon(
@@ -666,6 +729,22 @@ private fun EntryCardHeader(entry: MindDumpEntry, showLock: Boolean = true) {
         }
     }
 }
+
+/** Background tone for a todo status badge, reflecting open vs closed states. */
+@Composable
+private fun statusBadgeColor(state: TodoState): Color =
+    when (state) {
+        TodoState.DONE, TodoState.CANCEL ->
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        TodoState.TODO ->
+            MaterialTheme.colorScheme.tertiaryContainer
+        TodoState.DOING ->
+            MaterialTheme.colorScheme.primaryContainer
+        TodoState.WAIT ->
+            MaterialTheme.colorScheme.secondaryContainer
+        TodoState.NONE ->
+            MaterialTheme.colorScheme.surfaceContainerHighest
+    }
 
 // ──────────────────────────────────────────────
 // Text entry

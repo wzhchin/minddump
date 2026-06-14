@@ -6,14 +6,21 @@ import java.io.File
  * Parsed metadata extracted from a MindDump filename.
  *
  * Naming convention:
- *   File:    {yymm-dd-HHMMSS}-f[-{originalName}].{extension}[.enc]
+ *   File:    [9999-]{yymm-dd-HHMMSS}-[STATUS-]-f[-{originalName}].{extension}[.enc]
  *   Comment: {yymm-dd-HHMMSS}-n-{yymm-dd-HHMMSS}.md[.enc]
- *   Group:   {yymm-dd-HHMMSS}-g[-{name}]/   (directory)
+ *   Group:   [9999-]{yymm-dd-HHMMSS}-[STATUS-]-g[-{name}]/   (directory)
  *
- * Timestamp format: \d{4}-\d{2}-\d{4} (e.g., 2506-13-143022)
+ * Where `9999-` is an optional pin prefix (a sort sentinel) and `STATUS` is an
+ * optional todo-status token (`TODO|DOING|WAIT|DONE|CANCEL`). Comments never
+ * carry a pin prefix or a status. Timestamp format: `\d{4}-\d{2}-\d{6}`
+ * (e.g., 2506-13-143022). The three free-form positions never collide: the
+ * status token is an uppercase word sitting before the lowercase role char,
+ * while `{originalName}` sits after the role char.
  */
 data class FileMetadata(
     val timestamp: String, // yymm-dd-HHMMSS (e.g., 2506-13-143022)
+    val isPinned: Boolean, // encoded as a `9999-` filename prefix
+    val todoState: TodoState, // encoded as a status token (NONE when absent)
     val role: EntryRole,
     val originalName: String?, // nullable, only for imported files
     val extension: String, // without dot
@@ -25,12 +32,20 @@ data class FileMetadata(
         get() = EntryType.fromExtension(extension)
 
     companion object {
-        // Timestamp: yyMM-dd-HHmmss = \d{4}-\d{2}-\d{6} (14 chars)
+        // Status token accepted between the timestamp and the role char.
+        private const val STATUS = """(?:TODO|DOING|WAIT|DONE|CANCEL)"""
+
+        // [9999-](timestamp)-[STATUS-](role)[-extra].(ext)(.enc)
+        // Group 1: pin prefix (without dash), 2: timestamp, 3: status token,
+        // 4: role char, 5: extra (originalName or comment targetTs), 6: ext, 7: enc.
         private val FILE_PATTERN = Regex(
-            """^(\d{4}-\d{2}-\d{6})-([fng])(?:-(.+?))?\.(\w+)(\.enc)?$""",
+            """^(9999-)?(\d{4}-\d{2}-\d{6})-(?:($STATUS)-)?([fng])(?:-(.+?))?\.(\w+)(\.enc)?$""",
         )
+
+        // Directory form: no extension; status + name both optional.
+        // Group 1: pin prefix, 2: timestamp, 3: status token, 4: name.
         private val DIR_PATTERN = Regex(
-            """^(\d{4}-\d{2}-\d{6})-g(?:-(.+))?$""",
+            """^(9999-)?(\d{4}-\d{2}-\d{6})-(?:($STATUS)-)?g(?:-(.+))?$""",
         )
 
         /**
@@ -51,11 +66,13 @@ data class FileMetadata(
         private fun parseFile(name: String): FileMetadata? {
             val match = FILE_PATTERN.matchEntire(name) ?: return null
 
-            val timestamp = match.groupValues[1]
-            val roleChar = match.groupValues[2]
-            val extra = match.groupValues[3] // originalName or commentTs
-            val ext = match.groupValues[4]
-            val enc = match.groupValues[5]
+            val isPinned = match.groupValues[1].isNotEmpty()
+            val timestamp = match.groupValues[2]
+            val statusToken = match.groupValues[3].takeIf { it.isNotEmpty() }
+            val roleChar = match.groupValues[4]
+            val extra = match.groupValues[5] // originalName or commentTs
+            val ext = match.groupValues[6]
+            val enc = match.groupValues[7]
             val isEncrypted = enc == ".enc"
 
             val role = when (roleChar) {
@@ -65,15 +82,17 @@ data class FileMetadata(
                 else -> return null
             }
 
-            // For files: extra = originalName
+            // For files: extra = originalName (blank when absent)
             // For comments: extra = commentTs (no originalName)
             val originalName = when (role) {
-                EntryRole.FILE -> extra?.ifBlank { null }
+                EntryRole.FILE -> extra.ifBlank { null }
                 else -> null
             }
 
             return FileMetadata(
                 timestamp = timestamp,
+                isPinned = isPinned,
+                todoState = TodoState.fromCode(statusToken),
                 role = role,
                 originalName = originalName,
                 extension = ext,
@@ -85,10 +104,15 @@ data class FileMetadata(
         private fun parseDirectory(name: String): FileMetadata? {
             val match = DIR_PATTERN.matchEntire(name) ?: return null
 
+            val isPinned = match.groupValues[1].isNotEmpty()
+            val statusToken = match.groupValues[3].takeIf { it.isNotEmpty() }
+
             return FileMetadata(
-                timestamp = match.groupValues[1],
+                timestamp = match.groupValues[2],
+                isPinned = isPinned,
+                todoState = TodoState.fromCode(statusToken),
                 role = EntryRole.GROUP,
-                originalName = match.groupValues[2]?.ifBlank { null },
+                originalName = match.groupValues[4].ifBlank { null },
                 extension = "",
                 isEncrypted = false,
                 rawFileName = name,

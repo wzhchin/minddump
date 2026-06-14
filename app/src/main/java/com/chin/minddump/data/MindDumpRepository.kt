@@ -9,6 +9,7 @@ import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.FileStorageEngine
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
+import com.chin.minddump.storage.TodoState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -469,6 +470,84 @@ class MindDumpRepository
             }
 
         /**
+         * Toggle the pin (置顶) state of a file entry. Pinning is encoded as a
+         * `9999-` filename prefix; this renames the file on disk and re-indexes
+         * the row so the feed reorders. Comments cannot be pinned.
+         */
+        suspend fun setEntryPinned(entry: MindDumpEntry, pinned: Boolean): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val newFile = storageEngine.setEntryPinned(entry.file, pinned)
+                val meta = FileMetadata.fromFile(newFile)!!
+                val updatedEntry = entry.copy(file = newFile, isPinned = pinned)
+                dao.deleteByPath(entry.file.absolutePath)
+                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+                updatedEntry
+            }
+
+        /**
+         * Set the todo status of a file entry, encoded as a status token in the
+         * filename. Pass [TodoState.NONE] to clear. Comments cannot carry status.
+         */
+        suspend fun setEntryStatus(entry: MindDumpEntry, state: TodoState): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val newFile = storageEngine.setEntryStatus(entry.file, state)
+                val meta = FileMetadata.fromFile(newFile)!!
+                val updatedEntry = entry.copy(file = newFile, todoState = state)
+                dao.deleteByPath(entry.file.absolutePath)
+                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+                updatedEntry
+            }
+
+        /**
+         * Toggle the pin state of a group directory and re-index every member
+         * row so group paths update.
+         */
+        suspend fun setGroupPinned(groupDir: File, space: Space, pinned: Boolean): File =
+            withContext(Dispatchers.IO) {
+                val oldPath = groupDir.absolutePath
+                val members = dao.getEntriesInGroupSnapshot(oldPath)
+                val newDir = storageEngine.setGroupPinned(groupDir, pinned)
+                val newPath = newDir.absolutePath
+                members.forEach { entity ->
+                    val movedFile = File(newPath, entity.filePath.substringAfterLast('/'))
+                    dao.deleteByPath(entity.filePath)
+                    dao.insert(
+                        entity.copy(
+                            filePath = movedFile.absolutePath,
+                            groupPath = newPath,
+                            lastModified = movedFile.lastModified(),
+                        ),
+                    )
+                }
+                reconcileWithDisk(space)
+                newDir
+            }
+
+        /**
+         * Set the todo status of a group directory and re-index members.
+         */
+        suspend fun setGroupStatus(groupDir: File, space: Space, state: TodoState): File =
+            withContext(Dispatchers.IO) {
+                val oldPath = groupDir.absolutePath
+                val members = dao.getEntriesInGroupSnapshot(oldPath)
+                val newDir = storageEngine.setGroupStatus(groupDir, state)
+                val newPath = newDir.absolutePath
+                members.forEach { entity ->
+                    val movedFile = File(newPath, entity.filePath.substringAfterLast('/'))
+                    dao.deleteByPath(entity.filePath)
+                    dao.insert(
+                        entity.copy(
+                            filePath = movedFile.absolutePath,
+                            groupPath = newPath,
+                            lastModified = movedFile.lastModified(),
+                        ),
+                    )
+                }
+                reconcileWithDisk(space)
+                newDir
+            }
+
+        /**
          * Delete an entry: remove file + delete Room row.
          */
         suspend fun deleteEntry(entry: MindDumpEntry) =
@@ -581,6 +660,8 @@ class MindDumpRepository
                             isEncrypted = cryptoEngine.isEncryptedFile(diskEntry.file),
                             groupPath = diskEntry.groupPath,
                             targetTimestamp = diskEntry.targetTimestamp,
+                            isPinned = diskEntry.isPinned,
+                            todoState = diskEntry.todoState,
                         )
                     }
                 if (toUpdate.isNotEmpty()) {

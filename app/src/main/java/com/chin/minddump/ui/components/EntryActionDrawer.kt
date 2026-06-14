@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
@@ -21,7 +22,9 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -41,9 +44,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.chin.minddump.R
+import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
+import com.chin.minddump.storage.TodoState
 import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalExpressiveShapes
 import com.chin.minddump.ui.theme.rememberPremiumHaptics
@@ -68,6 +75,8 @@ fun EntryActionDrawer(
     onMoveToSpace: (Space) -> Unit,
     onDismiss: () -> Unit,
     onMoveOutOfGroup: (() -> Unit)? = null,
+    onTogglePin: (() -> Unit)? = null,
+    onSetStatus: ((TodoState) -> Unit)? = null,
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
@@ -76,6 +85,9 @@ fun EntryActionDrawer(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showGroupPicker by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showStatusPicker by remember { mutableStateOf(false) }
+
+    val isComment = entry.role == EntryRole.COMMENT
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -97,6 +109,38 @@ fun EntryActionDrawer(
             )
 
             // Action items
+            // Pin toggle — comments cannot be pinned.
+            if (!isComment && onTogglePin != null) {
+                ActionItem(
+                    icon = Icons.Filled.PushPin,
+                    label = stringResource(if (entry.isPinned) R.string.unpin else R.string.pin),
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onTogglePin()
+                        onDismiss()
+                    },
+                )
+            }
+            // Todo status — comments cannot carry a status.
+            if (!isComment && onSetStatus != null) {
+                ActionItem(
+                    icon = statusIcon(entry.todoState),
+                    label = stringResource(R.string.todo_status),
+                    trailing = {
+                        if (entry.todoState != TodoState.NONE) {
+                            Text(
+                                text = statusLabel(entry.todoState),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        showStatusPicker = true
+                    },
+                )
+            }
             ActionItem(
                 icon = Icons.Filled.DriveFileRenameOutline,
                 label = "重命名",
@@ -198,6 +242,36 @@ fun EntryActionDrawer(
             onDismiss = { showDeleteConfirm = false },
         )
     }
+
+    if (showStatusPicker) {
+        StatusPickerSheet(
+            current = entry.todoState,
+            onSelect = { state ->
+                onSetStatus?.invoke(state)
+                showStatusPicker = false
+                onDismiss()
+            },
+            onDismiss = { showStatusPicker = false },
+        )
+    }
+}
+
+/** Localized label for a [TodoState], used in badges and the status picker. */
+@Composable
+fun statusLabel(state: TodoState): String = when (state) {
+    TodoState.NONE -> stringResource(R.string.status_none)
+    TodoState.TODO -> stringResource(R.string.status_todo)
+    TodoState.DOING -> stringResource(R.string.status_doing)
+    TodoState.WAIT -> stringResource(R.string.status_wait)
+    TodoState.DONE -> stringResource(R.string.status_done)
+    TodoState.CANCEL -> stringResource(R.string.status_cancel)
+}
+
+/** Leading icon for a [TodoState] in the drawer. */
+private fun statusIcon(state: TodoState): ImageVector = when (state) {
+    TodoState.DONE -> Icons.Filled.CheckCircle
+    TodoState.CANCEL -> Icons.Filled.CheckCircle
+    else -> Icons.Filled.TaskAlt
 }
 
 private fun extractOriginalName(entry: MindDumpEntry): String? {
@@ -217,6 +291,7 @@ private fun ActionItem(
     icon: ImageVector,
     label: String,
     isDestructive: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val color = if (isDestructive) {
@@ -245,6 +320,10 @@ private fun ActionItem(
             style = MaterialTheme.typography.bodyLarge,
             color = color,
         )
+        if (trailing != null) {
+            Spacer(modifier = Modifier.weight(1f))
+            trailing()
+        }
     }
 }
 
@@ -427,13 +506,18 @@ fun MultiSelectTopBar(
 @Composable
 fun GroupActionSheet(
     groupName: String,
+    isPinned: Boolean,
+    todoState: TodoState,
     onRename: () -> Unit,
     onDissolve: () -> Unit,
     onDismiss: () -> Unit,
+    onTogglePin: (() -> Unit)? = null,
+    onSetStatus: ((TodoState) -> Unit)? = null,
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
     val sheetState = rememberBottomSheetState(SheetValue.Hidden)
+    var showStatusPicker by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -452,6 +536,36 @@ fun GroupActionSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 16.dp, start = 8.dp),
             )
+            if (onTogglePin != null) {
+                ActionItem(
+                    icon = Icons.Filled.PushPin,
+                    label = stringResource(if (isPinned) R.string.unpin else R.string.pin),
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onTogglePin()
+                        onDismiss()
+                    },
+                )
+            }
+            if (onSetStatus != null) {
+                ActionItem(
+                    icon = statusIcon(todoState),
+                    label = stringResource(R.string.todo_status),
+                    trailing = {
+                        if (todoState != TodoState.NONE) {
+                            Text(
+                                text = statusLabel(todoState),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        showStatusPicker = true
+                    },
+                )
+            }
             ActionItem(
                 icon = Icons.Filled.DriveFileRenameOutline,
                 label = "重命名组",
@@ -469,6 +583,79 @@ fun GroupActionSheet(
                     onDissolve()
                 },
             )
+        }
+    }
+
+    if (showStatusPicker) {
+        StatusPickerSheet(
+            current = todoState,
+            onSelect = { state ->
+                onSetStatus?.invoke(state)
+                showStatusPicker = false
+                onDismiss()
+            },
+            onDismiss = { showStatusPicker = false },
+        )
+    }
+}
+
+// ──────────────────────────────────────────────
+// Todo Status Picker Sheet
+// ──────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StatusPickerSheet(
+    current: TodoState,
+    onSelect: (TodoState) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shapes = LocalExpressiveShapes.current
+    val haptics = rememberPremiumHaptics()
+    val options = listOf(
+        TodoState.NONE,
+        TodoState.TODO,
+        TodoState.DOING,
+        TodoState.WAIT,
+        TodoState.DONE,
+        TodoState.CANCEL,
+    )
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = shapes.cardLarge as RoundedCornerShape,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.todo_status),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
+            )
+            options.forEach { state ->
+                ActionItem(
+                    icon = statusIcon(state),
+                    label = statusLabel(state),
+                    trailing = {
+                        if (state == current) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    },
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onSelect(state)
+                    },
+                )
+            }
         }
     }
 }

@@ -147,4 +147,13 @@
     <string name="comments_collapse">▾ Hide comments</string>
     <string name="comment_label">Comment</string>
     <string name="orphan_comment">Original file deleted</string>
+    <string name="pin">Pin</string>
+    <string name="unpin">Unpin</string>
+    <string name="todo_status">Todo status</string>
+    <string name="status_none">None</string>
+    <string name="status_todo">Todo</string>
+    <string name="status_doing">Doing</string>
+    <string name="status_wait">Waiting</string>
+    <string name="status_done">Done</string>
+    <string name="status_cancel">Canceled</string>
 </resources>

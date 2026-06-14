@@ -14,6 +14,7 @@ import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.ShareItem
 import com.chin.minddump.storage.Space
+import com.chin.minddump.storage.TodoState
 import com.chin.minddump.ui.theme.AppPaletteStyle
 import com.chin.minddump.ui.theme.AppThemeMode
 import com.chin.minddump.ui.theme.ThemePreferences
@@ -111,7 +112,7 @@ data class MindDumpUiState(
 )
 
 @HiltViewModel
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 class MindDumpViewModel
     @Inject
     constructor(
@@ -529,6 +530,22 @@ class MindDumpViewModel
             }
         }
 
+        /** Toggle the pin (置顶) state of an entry. Comments are ignored. */
+        fun toggleEntryPinned(entry: MindDumpEntry) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.setEntryPinned(entry, !entry.isPinned)
+                refreshForCurrentScope()
+            }
+        }
+
+        /** Set the todo status of an entry. [TodoState.NONE] clears it. */
+        fun setEntryStatus(entry: MindDumpEntry, state: TodoState) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.setEntryStatus(entry, state)
+                refreshForCurrentScope()
+            }
+        }
+
         fun moveToGroup(entry: MindDumpEntry, groupDir: File) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.moveToGroup(entry, groupDir)
@@ -652,6 +669,25 @@ class MindDumpViewModel
         fun dissolveGroup(groupDir: File) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.dissolveGroup(groupDir, _uiState.value.currentSpace)
+                refreshForCurrentScope()
+            }
+        }
+
+        /** Toggle the pin (置顶) state of a group directory. */
+        fun toggleGroupPinned(groupDir: File) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val meta = FileMetadata.fromFile(groupDir)
+                repository.setGroupPinned(groupDir, _uiState.value.currentSpace, meta?.isPinned != true)
+                _uiState.update { it.copy(groupMenuFor = null) }
+                refreshForCurrentScope()
+            }
+        }
+
+        /** Set the todo status of a group directory. */
+        fun setGroupStatus(groupDir: File, state: TodoState) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.setGroupStatus(groupDir, _uiState.value.currentSpace, state)
+                _uiState.update { it.copy(groupMenuFor = null) }
                 refreshForCurrentScope()
             }
         }

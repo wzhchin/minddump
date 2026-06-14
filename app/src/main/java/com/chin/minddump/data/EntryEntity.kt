@@ -7,6 +7,7 @@ import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
+import com.chin.minddump.storage.TodoState
 import java.io.File
 
 @Entity(
@@ -32,6 +33,8 @@ data class EntryEntity(
     val role: EntryRole = EntryRole.FILE,
     val targetTimestamp: String? = null,
     val groupPath: String? = null,
+    val isPinned: Boolean = false,
+    val todoState: TodoState = TodoState.NONE,
 )
 
 fun EntryEntity.toEntry(): MindDumpEntry =
@@ -44,6 +47,8 @@ fun EntryEntity.toEntry(): MindDumpEntry =
         role = role,
         targetTimestamp = targetTimestamp,
         groupPath = groupPath,
+        isPinned = isPinned,
+        todoState = todoState,
     )
 
 fun MindDumpEntry.toEntity(contentPreview: String = "", isEncrypted: Boolean = false): EntryEntity =
@@ -59,4 +64,6 @@ fun MindDumpEntry.toEntity(contentPreview: String = "", isEncrypted: Boolean = f
         role = role,
         targetTimestamp = targetTimestamp,
         groupPath = groupPath,
+        isPinned = isPinned,
+        todoState = todoState,
     )

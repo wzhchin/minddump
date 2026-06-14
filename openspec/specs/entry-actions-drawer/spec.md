@@ -1,9 +1,7 @@
 ## Purpose
 
 Bottom sheet drawer for entry actions triggered by long-press, providing rename, delete, multi-select, group move, and space move operations.
-
 ## Requirements
-
 ### Requirement: Long-press entry action drawer
 The system SHALL display a bottom drawer (ModalBottomSheet) when the user long-presses an entry, replacing the current delete confirmation dialog. The drawer SHALL present available actions for the selected entry.
 
@@ -83,3 +81,38 @@ The drawer SHALL include a "Move to {opposite space}" action that moves the file
 #### Scenario: File in group moved between spaces
 - **WHEN** a file inside a group directory is moved to the opposite space
 - **THEN** the file is moved out of the group and into the corresponding space's month directory (groups are space-scoped)
+
+### Requirement: Pin/unpin action
+The entry actions drawer SHALL include a pin/unpin toggle action for file entries (not comments). The action label SHALL reflect the current state ("置顶" when unpinned, "取消置顶" when pinned).
+
+#### Scenario: Pin from the drawer
+- **WHEN** the user opens the drawer for `2506-13-143022-f.md` and taps "置顶"
+- **THEN** the file is renamed to `9999-2506-13-143022-f.md` and the drawer reflects the pinned state
+
+#### Scenario: Unpin from the drawer
+- **WHEN** the user opens the drawer for `9999-2506-13-143022-f.md` and taps "取消置顶"
+- **THEN** the file is renamed to `2506-13-143022-f.md`
+
+#### Scenario: Comment entry has no pin action
+- **WHEN** the user opens the drawer for a comment (`-n-`) entry
+- **THEN** no pin/unpin action is shown
+
+### Requirement: Set todo status action
+The entry actions drawer SHALL include a "待办状态" (todo status) action that opens a chooser offering the status set (`TODO`, `DOING`, `WAIT`, `DONE`, `CANCEL`) plus a "无" (clear) option, for file entries (not comments).
+
+#### Scenario: Open the status chooser
+- **WHEN** the user taps "待办状态" in the drawer
+- **THEN** a chooser presents TODO, DOING, WAIT, DONE, CANCEL, and a clear option, with the current status marked
+
+#### Scenario: Pick a status
+- **WHEN** the user picks DOING for `2506-13-143022-f.md`
+- **THEN** the file is renamed to `2506-13-143022-DOING-f.md` and the chooser closes
+
+#### Scenario: Clear the status
+- **WHEN** the user picks the clear option for `2506-13-143022-DONE-f.md`
+- **THEN** the file is renamed to `2506-13-143022-f.md`
+
+#### Scenario: Comment entry has no status action
+- **WHEN** the user opens the drawer for a comment (`-n-`) entry
+- **THEN** no todo-status action is shown
+

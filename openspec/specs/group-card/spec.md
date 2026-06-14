@@ -3,9 +3,7 @@
 ## Purpose
 
 Define how groups are rendered as expressive cards in the MindDump main list, including media carousel preview, header presentation, member stats, and interaction patterns.
-
 ## Requirements
-
 ### Requirement: Group card shows a media carousel preview
 The system SHALL render a group as a card whose top region is a horizontally browsable media carousel previewing the group's media-bearing members (photos and video thumbnails), so the user can glance at a group's contents and swipe through them without entering the group.
 
@@ -50,3 +48,19 @@ The system SHALL preserve tap-to-open and long-press-to-open-menu on the group c
 - **WHEN** the user long-presses the group card
 - **THEN** the group action menu opens
 - **AND** a buildup tactile feedback is emitted
+
+### Requirement: Pin and status indicators on group cards
+The system SHALL render a pin indicator on a group card when the group is pinned, and a status badge when the group carries a todo status, placed in the group card header alongside the name and member stats.
+
+#### Scenario: Pinned group shows a pin indicator
+- **WHEN** a group card for `9999-2506-13-120000-g-travel` is rendered
+- **THEN** its header shows a pin indicator
+
+#### Scenario: Statused group shows a status badge
+- **WHEN** a group card for `2506-13-120000-TODO-g-travel` is rendered
+- **THEN** its header shows a status badge labeled with the localized status text
+
+#### Scenario: Plain group shows neither
+- **WHEN** a group card for `2506-13-120000-g-travel` is rendered
+- **THEN** no pin indicator and no status badge are shown
+

@@ -63,6 +63,7 @@ import com.chin.minddump.R
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.FileMetadata
+import com.chin.minddump.storage.TodoState
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.ui.components.BiometricGate
@@ -431,14 +432,23 @@ fun MainScreen(
                     onMoveToSpace = { targetSpace ->
                         viewModel.moveEntryToSpace(entry, targetSpace)
                     },
+                    onTogglePin = {
+                        viewModel.toggleEntryPinned(entry)
+                    },
+                    onSetStatus = { state ->
+                        viewModel.setEntryStatus(entry, state)
+                    },
                     onDismiss = { viewModel.clearEntryAction() },
                 )
             }
 
             // Long-press group action menu
             uiState.groupMenuFor?.let { groupDir ->
+                val groupMeta = FileMetadata.fromFile(groupDir)
                 GroupActionSheet(
                     groupName = groupDir.name.substringAfter("-g", groupDir.name),
+                    isPinned = groupMeta?.isPinned == true,
+                    todoState = groupMeta?.todoState ?: TodoState.NONE,
                     onRename = {
                         viewModel.dismissGroupMenu()
                         viewModel.requestRenameGroup(groupDir)
@@ -446,6 +456,12 @@ fun MainScreen(
                     onDissolve = {
                         viewModel.dismissGroupMenu()
                         viewModel.dissolveGroup(groupDir)
+                    },
+                    onTogglePin = {
+                        viewModel.toggleGroupPinned(groupDir)
+                    },
+                    onSetStatus = { state ->
+                        viewModel.setGroupStatus(groupDir, state)
                     },
                     onDismiss = { viewModel.dismissGroupMenu() },
                 )

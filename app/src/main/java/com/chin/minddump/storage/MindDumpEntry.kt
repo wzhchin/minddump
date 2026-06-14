@@ -13,7 +13,9 @@ data class MindDumpEntry(
     val timestamp: String, // yymm-dd-HHMMSS
     val role: EntryRole = EntryRole.FILE,
     val targetTimestamp: String? = null, // For comments: the target's timestamp prefix
-    val groupPath: String? = null,      // For files inside a group: the group directory path
+    val groupPath: String? = null, // For files inside a group: the group directory path
+    val isPinned: Boolean = false, // Encoded as a `9999-` filename prefix
+    val todoState: TodoState = TodoState.NONE, // Encoded as a status token in the filename
 )
 
 enum class Space(
@@ -41,5 +43,26 @@ enum class EntryType {
             "mp4" -> VIDEO
             else -> FILE
         }
+    }
+}
+
+/**
+ * Todo status encoded as an uppercase token between the timestamp and the role
+ * char in a filename. [NONE] writes no token — plain notes are not todos.
+ * Only FILE and GROUP roles may carry a status; comments never do.
+ */
+enum class TodoState(
+    val code: String?,
+) {
+    NONE(null),
+    TODO("TODO"),
+    DOING("DOING"),
+    WAIT("WAIT"),
+    DONE("DONE"),
+    CANCEL("CANCEL"),
+    ;
+
+    companion object {
+        fun fromCode(code: String?): TodoState = entries.firstOrNull { it.code == code } ?: NONE
     }
 }

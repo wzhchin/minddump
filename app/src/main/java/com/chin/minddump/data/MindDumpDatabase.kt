@@ -5,7 +5,7 @@ import androidx.room3.RoomDatabase
 
 @Database(
     entities = [EntryEntity::class, EntryFts::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class MindDumpDatabase : RoomDatabase() {

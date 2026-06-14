@@ -17,6 +17,7 @@ import java.time.format.DateTimeFormatter
  * Comment naming: {targetTs}-n-{yymm-dd-HHMMSS}.md
  * Group directories: {yymm-dd-HHMMSS}-g[-{name}]/
  */
+@Suppress("TooManyFunctions") // File ops are inherently granular; grouped by concern
 class FileStorageEngine(
     private val context: Context,
 ) {
@@ -249,17 +250,115 @@ class FileStorageEngine(
 
     /**
      * Rename a group directory's display name portion.
-     * Reuses the {ts}-g[-{name}] naming rule from [createGroup].
+     * Reuses the `[9999-]{ts}-[STATUS-]-g[-{name}]` naming rule from [createGroup],
+     * preserving any existing pin prefix and todo status.
      * Returns the renamed directory.
      */
     fun renameGroupDir(groupDir: File, newName: String?): File {
         val meta = FileMetadata.fromFile(groupDir) ?: error("Cannot parse group directory: ${groupDir.name}")
-        val suffix = if (newName.isNullOrBlank()) "g" else "g-$newName"
-        val newDir = File(groupDir.parent, "${meta.timestamp}-$suffix")
+        val newDir = File(groupDir.parent, reassembleDirName(meta.timestamp, meta.isPinned, meta.todoState, newName))
         check(!newDir.exists()) { "Target group directory already exists: ${newDir.absolutePath}" }
         val renamed = groupDir.renameTo(newDir)
         check(renamed) { "Failed to rename group directory ${groupDir.absolutePath}" }
         return newDir
+    }
+
+    /**
+     * Toggle the `9999-` pin prefix on a file entry. Preserves status, original
+     * name, extension, and encryption. Returns the renamed file.
+     */
+    fun setEntryPinned(file: File, pinned: Boolean): File {
+        val meta = FileMetadata.fromFile(file) ?: error("Cannot parse file: ${file.name}")
+        if (meta.role == EntryRole.COMMENT) error("Comments cannot be pinned: ${file.name}")
+        if (meta.isPinned == pinned) return file
+        return renameEntryFile(file, meta.copy(isPinned = pinned))
+    }
+
+    /**
+     * Set the todo status on a file entry. Pass [TodoState.NONE] to clear.
+     * Preserves pin, original name, extension, and encryption.
+     */
+    fun setEntryStatus(file: File, state: TodoState): File {
+        val meta = FileMetadata.fromFile(file) ?: error("Cannot parse file: ${file.name}")
+        if (meta.role == EntryRole.COMMENT) error("Comments cannot carry a status: ${file.name}")
+        if (meta.todoState == state) return file
+        return renameEntryFile(file, meta.copy(todoState = state))
+    }
+
+    /**
+     * Toggle the `9999-` pin prefix on a group directory.
+     */
+    fun setGroupPinned(groupDir: File, pinned: Boolean): File {
+        val meta = FileMetadata.fromFile(groupDir) ?: error("Cannot parse group directory: ${groupDir.name}")
+        if (meta.isPinned == pinned) return groupDir
+        val newDir = File(groupDir.parent, reassembleDirName(meta.timestamp, pinned, meta.todoState, meta.originalName))
+        check(!newDir.exists()) { "Target group directory already exists: ${newDir.absolutePath}" }
+        val renamed = groupDir.renameTo(newDir)
+        check(renamed) { "Failed to pin group directory ${groupDir.absolutePath}" }
+        return newDir
+    }
+
+    /**
+     * Set the todo status on a group directory. Pass [TodoState.NONE] to clear.
+     */
+    fun setGroupStatus(groupDir: File, state: TodoState): File {
+        val meta = FileMetadata.fromFile(groupDir) ?: error("Cannot parse group directory: ${groupDir.name}")
+        if (meta.todoState == state) return groupDir
+        val newDir = File(groupDir.parent, reassembleDirName(meta.timestamp, meta.isPinned, state, meta.originalName))
+        check(!newDir.exists()) { "Target group directory already exists: ${newDir.absolutePath}" }
+        val renamed = groupDir.renameTo(newDir)
+        check(renamed) { "Failed to set status on group directory ${groupDir.absolutePath}" }
+        return newDir
+    }
+
+    /**
+     * Reassemble a file entry's filename from its parsed metadata, honoring pin
+     * prefix, status token, role, original name, extension, and encryption.
+     */
+    private fun reassembleFileName(meta: FileMetadata): String {
+        val pin = if (meta.isPinned) "9999-" else ""
+        val status = meta.todoState.code?.let { "$it-" } ?: ""
+        val name = meta.originalName?.let { "-$it" } ?: ""
+        val enc = if (meta.isEncrypted) ".enc" else ""
+        return "$pin${meta.timestamp}-$status${meta.role.code}$name.${meta.extension}$enc"
+    }
+
+    /**
+     * Reassemble a group directory's name (no extension).
+     */
+    private fun reassembleDirName(
+        timestamp: String,
+        isPinned: Boolean,
+        state: TodoState,
+        name: String?,
+    ): String {
+        val pin = if (isPinned) "9999-" else ""
+        val status = state.code?.let { "$it-" } ?: ""
+        val suffix = if (name.isNullOrBlank()) "g" else "g-$name"
+        return "$pin$timestamp-$status$suffix"
+    }
+
+    /**
+     * Rename a file entry to match [newMeta], guarding against collisions by
+     * appending `_1`, `_2`, … to the original-name portion before the extension.
+     */
+    private fun renameEntryFile(file: File, newMeta: FileMetadata): File {
+        val parent = file.parentFile ?: error("File has no parent: ${file.absolutePath}")
+
+        fun targetFor(originalName: String?): File =
+            File(parent, reassembleFileName(newMeta.copy(originalName = originalName)))
+
+        var target = targetFor(newMeta.originalName)
+        if (target == file) return file
+        var seq = 1
+        while (target.exists()) {
+            val suffixed = newMeta.originalName?.let { name -> "${name}_$seq" } ?: "entry_$seq"
+            target = targetFor(suffixed)
+            seq++
+        }
+        val renamed = file.renameTo(target)
+        check(renamed) { "Failed to rename ${file.absolutePath} -> ${target.absolutePath}" }
+        return target
     }
 
     /**
@@ -288,6 +387,7 @@ class FileStorageEngine(
         return parentDir
             .listFiles()
             ?.filter { it.isDirectory && FileMetadata.fromFile(it)?.role == EntryRole.GROUP }
+            ?.sortedByDescending { it.name }
             ?: emptyList()
     }
 
@@ -321,6 +421,8 @@ class FileStorageEngine(
                             role = meta.role,
                             targetTimestamp = null, // derived during reconciliation
                             groupPath = groupPath,
+                            isPinned = meta.isPinned,
+                            todoState = meta.todoState,
                         ),
                     )
                 }
@@ -345,27 +447,20 @@ class FileStorageEngine(
                 scanDirectory(monthDir, monthFolder, null)
             }
 
-        return entries.sortedByDescending { it.file.lastModified() }
+        // Sort by filename (descending) so the `9999-` pin sentinel floats pinned
+        // entries above all real dates, and within each block the timestamp gives
+        // newest-first order. Stable across edits — pinning, not editing, reorders.
+        return entries.sortedByDescending { it.file.name }
     }
 
     /**
-     * Rename the originalName portion of a file.
-     * E.g., {ts}-f-oldname.pdf → {ts}-f-newname.pdf
+     * Rename the originalName portion of a file, preserving pin, status, and
+     * encryption. E.g., `9999-{ts}-TODO-f-oldname.pdf` → `9999-{ts}-TODO-f-newname.pdf`.
      */
     fun renameEntry(file: File, newOriginalName: String?): File {
         val meta = FileMetadata.fromFile(file) ?: error("Cannot parse file: ${file.name}")
-        val encSuffix = if (meta.isEncrypted) ".enc" else ""
-
-        val newBaseName = if (newOriginalName.isNullOrBlank()) {
-            "${meta.timestamp}-f"
-        } else {
-            "${meta.timestamp}-f-$newOriginalName"
-        }
-
-        val newFile = File(file.parent, "$newBaseName.${meta.extension}$encSuffix")
-        val renamed = file.renameTo(newFile)
-        check(renamed) { "Failed to rename ${file.absolutePath}" }
-        return newFile
+        val cleanedName = newOriginalName?.ifBlank { null }
+        return renameEntryFile(file, meta.copy(originalName = cleanedName))
     }
 
     /**
