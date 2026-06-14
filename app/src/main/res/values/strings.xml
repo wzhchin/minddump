@@ -137,4 +137,14 @@
     <string name="color_blue">蓝</string>
     <string name="color_purple">紫</string>
     <string name="color_pink">粉</string>
+
+    <!-- Group card / comments -->
+    <string name="group_unnamed">未命名分组</string>
+    <string name="group_member_count">%1$d 项</string>
+    <string name="group_empty">空分组</string>
+    <string name="group_media_preview">分组内容预览</string>
+    <string name="comments_expand">▸ %1$d 条评论</string>
+    <string name="comments_collapse">▾ 收起评论</string>
+    <string name="comment_label">评论</string>
+    <string name="orphan_comment">原始文件已删除</string>
 </resources>

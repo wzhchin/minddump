@@ -125,4 +125,14 @@
     <string name="color_blue">Blue</string>
     <string name="color_purple">Purple</string>
     <string name="color_pink">Pink</string>
+
+    <!-- Group card / comments -->
+    <string name="group_unnamed">Unnamed group</string>
+    <string name="group_member_count">%1$d items</string>
+    <string name="group_empty">Empty group</string>
+    <string name="group_media_preview">Group content preview</string>
+    <string name="comments_expand">▸ %1$d comments</string>
+    <string name="comments_collapse">▾ Hide comments</string>
+    <string name="comment_label">Comment</string>
+    <string name="orphan_comment">Original file deleted</string>
 </resources>

@@ -24,6 +24,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -226,11 +229,12 @@ private fun groupEntriesForRender(entries: List<MindDumpEntry>): List<GroupedEnt
 // ──────────────────────────────────────────────
 
 /**
- * Renders a group as a summary card: folder icon, name, member count, and a row
- * of the distinct entry types found inside (with counts). Tap opens the group
- * detail; long-press opens the group action menu.
+ * Renders a group as a summary card: a horizontal media carousel previewing the
+ * group's photo/video members (omitted when there are none), then a folder icon,
+ * name, member count, and a row of the distinct entry types found inside (with
+ * counts). Tap opens the group detail; long-press opens the group action menu.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun GroupSummaryCard(
     summary: GroupSummary,
@@ -239,6 +243,9 @@ fun GroupSummaryCard(
 ) {
     val haptics = rememberPremiumHaptics()
     val typeCounts = summary.memberEntries.groupingBy { it.type }.eachCount()
+    val mediaMembers = summary.memberEntries
+        .filter { it.type == EntryType.PHOTO || it.type == EntryType.VIDEO }
+        .sortedByDescending { it.file.lastModified() }
 
     EntryCard(
         onClick = {
@@ -250,10 +257,15 @@ fun GroupSummaryCard(
             onLongClick()
         },
     ) {
+        // ── Media carousel preview (omitted when the group has no photos/videos) ──
+        if (mediaMembers.isNotEmpty()) {
+            GroupMediaCarousel(members = mediaMembers)
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 12.dp, top = 12.dp, end = 12.dp),
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -265,14 +277,14 @@ fun GroupSummaryCard(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Folder,
-                    contentDescription = "分组",
+                    contentDescription = stringResource(R.string.group_media_preview),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp),
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = summary.name.ifBlank { "未命名分组" },
+                text = summary.name.ifBlank { stringResource(R.string.group_unnamed) },
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
@@ -280,7 +292,7 @@ fun GroupSummaryCard(
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = "${summary.memberEntries.size}项",
+                text = stringResource(R.string.group_member_count, summary.memberEntries.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -290,14 +302,14 @@ fun GroupSummaryCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .padding(bottom = 12.dp),
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (typeCounts.isEmpty()) {
                 Text(
-                    text = "空分组",
+                    text = stringResource(R.string.group_empty),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 )
@@ -324,10 +336,63 @@ fun GroupSummaryCard(
 }
 
 /**
- * Renders a file entry with its comments nested inside the same bubble.
- * Orphan comments (no parent file) get a special indicator.
+ * Horizontal browsable carousel of a group's photo/video members, mirroring the
+ * Material 3 Expressive card-preview pattern. Each tile is a large rounded media
+ * thumbnail; videos get a play overlay.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GroupMediaCarousel(members: List<MindDumpEntry>) {
+    val carouselState = rememberCarouselState { members.size }
+
+    HorizontalMultiBrowseCarousel(
+        state = carouselState,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .height(180.dp),
+        preferredItemWidth = 180.dp,
+        itemSpacing = 8.dp,
+        contentPadding = PaddingValues(horizontal = 16.dp),
+    ) { index ->
+        val member = members[index]
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            coil3.compose.AsyncImage(
+                model = member.file,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            if (member.type == EntryType.VIDEO) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Renders a file entry as a single card with its comments folded inside it (an
+ * expandable list). Orphan comments — whose parent file was deleted — get a
+ * special indicator inside the card.
+ */
 @Composable
 fun GroupedEntryItem(
     groupedEntry: GroupedEntry,
@@ -337,108 +402,129 @@ fun GroupedEntryItem(
     isMultiSelectMode: Boolean = false,
     isSelected: Boolean = false,
 ) {
-    val entry = groupedEntry.entry
-    val comments = groupedEntry.comments
-    val isOrphanComment = entry.role == EntryRole.COMMENT
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // Main entry bubble
-        EntryItem(
-            entry = entry,
-            onClick = onClick,
-            onLongClick = onLongClick,
-            isMultiSelectMode = isMultiSelectMode,
-            isSelected = isSelected,
-        )
-
-        // Nested comments
-        if (comments.isNotEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 32.dp, top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                comments.forEach { comment ->
-                    CommentBubble(
-                        comment = comment,
-                        onClick = { onCommentClick(comment) },
-                    )
-                }
-            }
-        }
-
-        // Orphan comment indicator
-        if (isOrphanComment) {
-            Text(
-                text = "💬 原始文件已删除",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.padding(start = 12.dp, top = 2.dp),
-            )
-        }
-    }
+    EntryItem(
+        entry = groupedEntry.entry,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        isMultiSelectMode = isMultiSelectMode,
+        isSelected = isSelected,
+        comments = groupedEntry.comments,
+        onCommentClick = onCommentClick,
+        isOrphanComment = groupedEntry.entry.role == EntryRole.COMMENT,
+    )
 }
 
 // ──────────────────────────────────────────────
-// Comment Bubble
+// Comments — collapsed in-card list
 // ──────────────────────────────────────────────
 
+/**
+ * Renders comments as a collapsed, expandable list inside the parent entry card:
+ * an affordance summarizing the count, which expands to timestamped content
+ * previews. Tapping a preview opens that comment.
+ */
 @Composable
-private fun CommentBubble(
-    comment: MindDumpEntry,
-    onClick: () -> Unit,
+private fun CommentListSection(
+    comments: List<MindDumpEntry>,
+    onCommentClick: (MindDumpEntry) -> Unit,
 ) {
+    var expanded by remember { mutableStateOf(false) }
     val haptics = rememberPremiumHaptics()
 
-    EntryCard(
-        onClick = {
-            haptics.perform(HapticPattern.Tick)
-            onClick()
-        },
-        onLongClick = {},
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {
+        // Expand/collapse affordance
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 12.dp, top = 8.dp, end = 12.dp),
+                .combinedClickable(
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        expanded = !expanded
+                    },
+                ).padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Comment icon
             Icon(
                 imageVector = Icons.Filled.Edit,
-                contentDescription = "评论",
+                contentDescription = stringResource(R.string.comment_label),
                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                 modifier = Modifier.size(16.dp),
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = formatRelativeTimestamp(comment.monthFolder, comment.timestamp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = if (expanded) {
+                    stringResource(R.string.comments_collapse)
+                } else {
+                    stringResource(R.string.comments_expand, comments.size)
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
-        // Comment content
-        val commentText by produceState(initialValue = comment.file.name, key1 = comment.file) {
-            value = withContext(Dispatchers.IO) {
-                try {
-                    comment.file.readText().take(500)
-                } catch (_: Exception) {
-                    comment.file.name
+        // Expanded previews
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                comments.forEach { comment ->
+                    CommentPreview(
+                        comment = comment,
+                        onClick = {
+                            haptics.perform(HapticPattern.Tick)
+                            onCommentClick(comment)
+                        },
+                    )
                 }
             }
         }
+    }
+}
 
+/**
+ * One expanded comment: a timestamp + a few-line content preview. Tapping opens it.
+ */
+@Composable
+private fun CommentPreview(
+    comment: MindDumpEntry,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .combinedClickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = formatRelativeTimestamp(comment.monthFolder, comment.timestamp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        val commentText by produceState(initialValue = comment.file.name, key1 = comment.file) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { comment.file.readText().take(500) }
+                    .getOrDefault(comment.file.name)
+            }
+        }
         Text(
             text = commentText,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .padding(bottom = 10.dp),
-            maxLines = 5,
+            modifier = Modifier.weight(1f),
+            maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -456,6 +542,9 @@ fun EntryItem(
     onLongClick: () -> Unit,
     isMultiSelectMode: Boolean = false,
     isSelected: Boolean = false,
+    comments: List<MindDumpEntry> = emptyList(),
+    onCommentClick: (MindDumpEntry) -> Unit = {},
+    isOrphanComment: Boolean = false,
 ) {
     val haptics = rememberPremiumHaptics()
 
@@ -504,6 +593,22 @@ fun EntryItem(
             EntryType.RECORDING -> AudioEntryContent(entry)
             EntryType.VIDEO -> VideoEntryContent(entry)
             else -> FileEntryContent(entry)
+        }
+
+        // ── In-card collapsed comments (omitted in multi-select) ──
+        if (!isMultiSelectMode && comments.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            CommentListSection(comments = comments, onCommentClick = onCommentClick)
+        }
+
+        // ── Orphan-comment indicator (its parent file was deleted) ──
+        if (!isMultiSelectMode && isOrphanComment) {
+            Text(
+                text = stringResource(R.string.orphan_comment),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
+            )
         }
     }
 }

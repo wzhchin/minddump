@@ -34,12 +34,12 @@
 
 ## 4. Phase 3 — GroupCard carousel + in-card comment collapse
 
-- [ ] 4.1 In the group card, add a `HorizontalMultiBrowseCarousel` (`@OptIn(ExperimentalMaterial3Api)`) of the group's media-bearing members (photo/video thumbnails via Coil), sized like Momentum's `ProjectListItem` (large item tiles, item spacing, content padding).
-- [ ] 4.2 Omit the carousel region when the group has no media members (no empty media area); keep the existing group name + member count + type-stat row.
-- [ ] 4.3 Make tapping the card open the group; make carousel gesture handling coexist with the card's tap/long-press (decide per the open question: group-open vs. open-tapped-media — implement to match the existing group-open affordance).
-- [ ] 4.4 Convert comments from nested bubbles to an in-card collapsed list: an expandable `▸ N 条评论` affordance that reveals timestamped content previews inline; tapping a comment opens it.
-- [ ] 4.5 Preserve the orphan-comment indicator ("原始文件已删除") inside the card presentation.
-- [ ] 4.6 Verify carousel browsing + open actions + comment expand/collapse + orphan indication; build + detekt + ktlint green.
+- [x] 4.1 In the group card, add a `HorizontalMultiBrowseCarousel` (`@OptIn(ExperimentalMaterial3Api)`) of the group's media-bearing members (photo/video thumbnails via Coil), sized like Momentum's `ProjectListItem` (large item tiles, item spacing, content padding).
+- [x] 4.2 Omit the carousel region when the group has no media members (no empty media area); keep the existing group name + member count + type-stat row.
+- [x] 4.3 Make tapping the card open the group; make carousel gesture handling coexist with the card's tap/long-press (decide per the open question: group-open vs. open-tapped-media — implement to match the existing group-open affordance).
+- [x] 4.4 Convert comments from nested bubbles to an in-card collapsed list: an expandable `▸ N 条评论` affordance that reveals timestamped content previews inline; tapping a comment opens it.
+- [x] 4.5 Preserve the orphan-comment indicator ("原始文件已删除") inside the card presentation.
+- [x] 4.6 Verify carousel browsing + open actions + comment expand/collapse + orphan indication; build + detekt + ktlint green.
 
 ## 5. Phase 4 — Cleanup & verification
 
