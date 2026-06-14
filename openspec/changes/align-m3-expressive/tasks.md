@@ -24,13 +24,13 @@
 
 ## 3. Phase 2 — EntryCard replaces bubbles (single-entry, low risk)
 
-- [ ] 3.1 Introduce `ui/components/EntryCard.kt`: a `Card`-based surface using `ExpressiveShapes.cardLarge` (28dp), `surfaceContainer` container color, light tonal elevation, `outlineVariant` border; `combinedClickable` for tap/long-press with `rememberPremiumHaptics` (Tick/Buildup).
-- [ ] 3.2 Port the refined header into `EntryCard`: circular type-icon avatar (color-by-type) + relative timestamp + lock indicator for encrypted entries (outside multi-select).
-- [ ] 3.3 Port per-type card bodies (text with expand affordance; photo with large rounded media region + `ZoomableAsyncImage`; recording/file chips via `DocumentChip`; video thumbnail + play overlay).
-- [ ] 3.4 Preserve multi-select: selection checkbox/affordance inside the card, stable layout (no jump beyond the affordance).
-- [ ] 3.5 Re-point `EntryList`/`GroupedEntryItem` in `ui/EntryItem.kt` to render via `EntryCard`; keep comments nested under the card for now (Phase 3 converts them).
-- [ ] 3.6 Remove `ui/components/GroupedMessageBubble.kt` (and `BubblePosition`/`BubbleRole`) once no callers remain; clean up imports across the render layer.
-- [ ] 3.7 Verify tap→open, long-press→action menu, multi-select, encrypted lock indicator, and per-type rendering all behave; build + detekt + ktlint green. *(Shippable stopping point.)*
+- [x] 3.1 Introduce `ui/components/EntryCard.kt`: a `Card`-based surface using `ExpressiveShapes.cardLarge` (28dp), `surfaceContainer` container color, light tonal elevation, `outlineVariant` border; `combinedClickable` for tap/long-press with `rememberPremiumHaptics` (Tick/Buildup).
+- [x] 3.2 Port the refined header into `EntryCard`: circular type-icon avatar (color-by-type) + relative timestamp + lock indicator for encrypted entries (outside multi-select).
+- [x] 3.3 Port per-type card bodies (text with expand affordance; photo with large rounded media region + `ZoomableAsyncImage`; recording/file chips via `DocumentChip`; video thumbnail + play overlay).
+- [x] 3.4 Preserve multi-select: selection checkbox/affordance inside the card, stable layout (no jump beyond the affordance).
+- [x] 3.5 Re-point `EntryList`/`GroupedEntryItem` in `ui/EntryItem.kt` to render via `EntryCard`; keep comments nested under the card for now (Phase 3 converts them).
+- [x] 3.6 Remove `ui/components/GroupedMessageBubble.kt` (and `BubblePosition`/`BubbleRole`) once no callers remain; clean up imports across the render layer.
+- [x] 3.7 Verify tap→open, long-press→action menu, multi-select, encrypted lock indicator, and per-type rendering all behave; build + detekt + ktlint green. *(Shippable stopping point.)*
 
 ## 4. Phase 3 — GroupCard carousel + in-card comment collapse
 

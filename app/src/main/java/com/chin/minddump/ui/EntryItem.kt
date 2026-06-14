@@ -8,7 +8,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,10 +58,8 @@ import com.chin.minddump.R
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.MindDumpEntry
-import com.chin.minddump.ui.components.BubblePosition
-import com.chin.minddump.ui.components.BubbleRole
 import com.chin.minddump.ui.components.DocumentChip
-import com.chin.minddump.ui.components.GroupedMessageBubble
+import com.chin.minddump.ui.components.EntryCard
 import com.chin.minddump.ui.GroupedEntry
 import com.chin.minddump.ui.GroupSummary
 import com.chin.minddump.ui.components.ZoomableAsyncImage
@@ -243,21 +240,15 @@ fun GroupSummaryCard(
     val haptics = rememberPremiumHaptics()
     val typeCounts = summary.memberEntries.groupingBy { it.type }.eachCount()
 
-    GroupedMessageBubble(
-        position = BubblePosition.SINGLE,
-        role = BubbleRole.ASSISTANT,
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    onClick()
-                },
-                onLongClick = {
-                    haptics.perform(HapticPattern.Buildup)
-                    onLongClick()
-                },
-            ),
+    EntryCard(
+        onClick = {
+            haptics.perform(HapticPattern.Tick)
+            onClick()
+        },
+        onLongClick = {
+            haptics.perform(HapticPattern.Buildup)
+            onLongClick()
+        },
     ) {
         Row(
             modifier = Modifier
@@ -400,17 +391,12 @@ private fun CommentBubble(
 ) {
     val haptics = rememberPremiumHaptics()
 
-    GroupedMessageBubble(
-        position = BubblePosition.SINGLE,
-        role = BubbleRole.ASSISTANT,
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    onClick()
-                },
-            ),
+    EntryCard(
+        onClick = {
+            haptics.perform(HapticPattern.Tick)
+            onClick()
+        },
+        onLongClick = {},
     ) {
         Row(
             modifier = Modifier
@@ -473,34 +459,30 @@ fun EntryItem(
 ) {
     val haptics = rememberPremiumHaptics()
 
-    GroupedMessageBubble(
-        position = BubblePosition.SINGLE,
-        role = BubbleRole.ASSISTANT,
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (isMultiSelectMode) {
-                    Modifier.clickable { onClick() }
-                } else {
-                    Modifier.combinedClickable(
-                        onClick = {
-                            haptics.perform(HapticPattern.Tick)
-                            onClick()
-                        },
-                        onLongClick = {
-                            haptics.perform(HapticPattern.Buildup)
-                            onLongClick()
-                        },
-                    )
-                },
-            ),
+    EntryCard(
+        onClick = {
+            haptics.perform(HapticPattern.Tick)
+            onClick()
+        },
+        onLongClick = {
+            haptics.perform(HapticPattern.Buildup)
+            onLongClick()
+        },
+        // In multi-select the whole card toggles selection on tap.
+        enabled = !isMultiSelectMode,
     ) {
         // Multi-select checkbox
         if (isMultiSelectMode) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, top = 8.dp, end = 12.dp),
+                    .padding(start = 12.dp, top = 12.dp, end = 12.dp)
+                    .combinedClickable(
+                        onClick = {
+                            haptics.perform(HapticPattern.Tick)
+                            onClick()
+                        },
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Checkbox(
@@ -508,7 +490,7 @@ fun EntryItem(
                     onCheckedChange = { onClick() },
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                EntryCardHeader(entry, showLock = !isMultiSelectMode)
+                EntryCardHeader(entry, showLock = false)
             }
         } else {
             // ── Header row: type icon avatar + timestamp ──
