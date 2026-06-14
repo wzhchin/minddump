@@ -88,8 +88,11 @@ data class MindDumpUiState(
     val groupedEntries: List<GroupedEntry> = emptyList(),
     // Group directories in the current month, with members for rendering
     val groups: List<GroupSummary> = emptyList(),
-    // Group currently open in the GroupDetail screen (null on main list)
-    val selectedGroup: File? = null,
+    // The currently open group page's directory (null on the main feed). Source
+    // of truth for in-group write/create scope and child-group rendering.
+    val currentGroupDir: File? = null,
+    // Sub-group cards for the open group page (month-top groups use [groups])
+    val childGroups: List<GroupSummary> = emptyList(),
     // Text/comment entry open in the fullscreen editor's edit mode (null in new-entry mode)
     val entryToEdit: File? = null,
     // Multi-select: show the merge-to-group picker
@@ -98,11 +101,7 @@ data class MindDumpUiState(
     val groupToRename: File? = null,
     // Long-press group action menu state
     val groupMenuFor: File? = null,
-) {
-    /** Entries not belonging to any group (rendered as standalone bubbles). */
-    val looseEntries: List<MindDumpEntry>
-        get() = entries.filter { it.groupPath == null }
-}
+)
 
 @HiltViewModel
 @Suppress("TooManyFunctions")
@@ -267,19 +266,48 @@ class MindDumpViewModel
          */
         fun refreshGroups() {
             viewModelScope.launch(Dispatchers.IO) {
-                val space = _uiState.value.currentSpace
-                val dirGroups = repository.scanGroups(space)
-                val membersByPath = _uiState.value.entries.groupBy { it.groupPath }
-                val summaries = dirGroups.map { dir ->
-                    GroupSummary(
-                        groupDir = dir,
-                        name = FileMetadata.fromFile(dir)?.originalName
-                            ?: dir.name.substringAfter("-g", dir.name),
-                        memberEntries = membersByPath[dir.absolutePath] ?: emptyList(),
-                    )
-                }
+                val summaries = buildSummaries(repository.scanGroups(_uiState.value.currentSpace))
                 _uiState.update { it.copy(groups = summaries) }
             }
+        }
+
+        /**
+         * Refresh the sub-group cards for the open group page (or clear them on
+         * the main feed).
+         */
+        fun refreshChildGroups() {
+            viewModelScope.launch(Dispatchers.IO) {
+                val parent = _uiState.value.currentGroupDir
+                val summaries = if (parent != null) buildSummaries(repository.scanChildGroups(parent)) else emptyList()
+                _uiState.update { it.copy(childGroups = summaries) }
+            }
+        }
+
+        /**
+         * Build group summaries for a set of group directories, resolving members
+         * from the current entry set's [MindDumpEntry.groupPath].
+         */
+        private fun buildSummaries(dirGroups: List<File>): List<GroupSummary> {
+            val membersByPath = _uiState.value.entries.groupBy { it.groupPath }
+            return dirGroups.map { dir ->
+                GroupSummary(
+                    groupDir = dir,
+                    name = FileMetadata.fromFile(dir)?.originalName
+                        ?: dir.name.substringAfter("-g", dir.name),
+                    memberEntries = membersByPath[dir.absolutePath] ?: emptyList(),
+                )
+            }
+        }
+
+        /**
+         * Refresh entries + whichever group list applies to the current scope
+         * (month-top [groups] on the feed, [childGroups] inside a group page).
+         * Public so screens can force a scope-aware refresh (e.g. before opening
+         * the move-to-group picker).
+         */
+        fun refreshForCurrentScope() {
+            refreshEntries()
+            if (_uiState.value.currentGroupDir != null) refreshChildGroups() else refreshGroups()
         }
 
         fun updateInputText(text: String) {
@@ -301,8 +329,9 @@ class MindDumpViewModel
             if (text.isEmpty()) return
 
             viewModelScope.launch(Dispatchers.IO) {
-                repository.saveTextEntry(_uiState.value.currentSpace, text)
+                repository.saveTextEntry(_uiState.value.currentSpace, text, _uiState.value.currentGroupDir)
                 _uiState.update { it.copy(inputText = "") }
+                refreshForCurrentScope()
             }
         }
 
@@ -310,19 +339,22 @@ class MindDumpViewModel
             _uiState.update { it.copy(isRecording = true) }
         }
 
-        fun getRecordingFile(): File = repository.getRecordingFile(_uiState.value.currentSpace)
+        fun getRecordingFile(): File =
+            repository.getRecordingFile(_uiState.value.currentSpace, _uiState.value.currentGroupDir)
 
         fun stopRecording() {
             _uiState.update { it.copy(isRecording = false) }
-            refreshEntries()
+            refreshForCurrentScope()
         }
 
-        fun getPhotoFile(): File = repository.getPhotoFile(_uiState.value.currentSpace)
+        fun getPhotoFile(): File =
+            repository.getPhotoFile(_uiState.value.currentSpace, _uiState.value.currentGroupDir)
 
-        fun getVideoFile(): File = repository.getVideoFile(_uiState.value.currentSpace)
+        fun getVideoFile(): File =
+            repository.getVideoFile(_uiState.value.currentSpace, _uiState.value.currentGroupDir)
 
         fun onMediaCaptured() {
-            refreshEntries()
+            refreshForCurrentScope()
         }
 
         fun importFile(
@@ -332,6 +364,7 @@ class MindDumpViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     repository.importFile(_uiState.value.currentSpace, uri, fileName)
+                    refreshForCurrentScope()
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to import file")
                     _uiState.update { it.copy(shareError = "1") }
@@ -483,42 +516,61 @@ class MindDumpViewModel
         fun moveToGroup(entry: MindDumpEntry, groupDir: File) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.moveToGroup(entry, groupDir)
-                refreshEntries()
+                refreshForCurrentScope()
             }
         }
 
         fun createGroup(name: String?) {
             viewModelScope.launch(Dispatchers.IO) {
-                repository.createGroup(_uiState.value.currentSpace, name)
-                refreshEntries()
+                repository.createGroup(_uiState.value.currentSpace, name, _uiState.value.currentGroupDir)
+                refreshForCurrentScope()
             }
         }
 
         /**
-         * Create a new group and move the entry into it atomically.
+         * Create a new group and move the entry into it atomically. When a group
+         * page is open, the new group is created under it (a sub-group).
          */
         fun createAndMoveToGroup(entry: MindDumpEntry, name: String?) {
             viewModelScope.launch(Dispatchers.IO) {
-                repository.createAndMoveToGroup(entry, _uiState.value.currentSpace, name)
-                refreshEntries()
+                repository.createAndMoveToGroup(
+                    entry,
+                    _uiState.value.currentSpace,
+                    name,
+                    _uiState.value.currentGroupDir,
+                )
+                refreshForCurrentScope()
             }
         }
 
         /**
-         * Move an entry out of its group back to the month directory.
+         * Move an entry out of its group to the parent location (parent group if
+         * nested, else the month directory).
          */
         fun moveEntryOutOfGroup(entry: MindDumpEntry) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.moveEntryOutOfGroup(entry, _uiState.value.currentSpace)
-                refreshEntries()
+                refreshForCurrentScope()
             }
         }
 
         // --- Group-level actions ---
 
-        /** Open a group in the GroupDetail screen. */
-        fun selectGroup(groupDir: File) {
-            _uiState.update { it.copy(selectedGroup = groupDir) }
+        /**
+         * Set the in-scope directory: null = root feed (current month dir), a
+         * non-null File = an open group. Drives in-scope write/create targets and
+         * child-group rendering.
+         *
+         * Called exactly once per route entry from `MainScreen`'s
+         * `LaunchedEffect(currentDir)` — never cleared by a composition dispose
+         * (returning to root navigates back to the root route, whose currentDir is
+         * null and re-sets the scope here). This keeps the scope live while a
+         * capture route sits on the back stack above the group page, so in-group
+         * photo/video/audio land in the open group.
+         */
+        fun setCurrentGroupDir(groupDir: File?) {
+            _uiState.update { it.copy(currentGroupDir = groupDir, childGroups = emptyList()) }
+            if (groupDir != null) refreshChildGroups() else refreshGroups()
         }
 
         /** Show the long-press action menu for a group card. */
@@ -528,11 +580,6 @@ class MindDumpViewModel
 
         fun dismissGroupMenu() {
             _uiState.update { it.copy(groupMenuFor = null) }
-        }
-
-        /** Leave the GroupDetail screen. */
-        fun clearSelectedGroup() {
-            _uiState.update { it.copy(selectedGroup = null) }
         }
 
         /** Open a text/comment entry in the fullscreen editor's edit mode. */
@@ -576,18 +623,19 @@ class MindDumpViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 repository.renameGroup(groupDir, _uiState.value.currentSpace, newName)
                 _uiState.update { it.copy(groupToRename = null) }
-                refreshEntries()
+                refreshForCurrentScope()
             }
         }
 
         /**
-         * Dissolve a group: members move back to the month directory, the empty
-         * group directory is removed. Files are preserved.
+         * Dissolve a group: members move to the parent location (parent group if
+         * nested, else the month directory), then the empty group directory is
+         * removed. Files are preserved.
          */
         fun dissolveGroup(groupDir: File) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.dissolveGroup(groupDir, _uiState.value.currentSpace)
-                refreshEntries()
+                refreshForCurrentScope()
             }
         }
 
@@ -656,7 +704,7 @@ class MindDumpViewModel
                         showGroupMergePicker = false,
                     )
                 }
-                refreshEntries()
+                refreshForCurrentScope()
             }
         }
 
@@ -664,7 +712,12 @@ class MindDumpViewModel
         fun mergeSelectedIntoNewGroup(name: String?) {
             val entries = _uiState.value.selectedEntries.toList()
             viewModelScope.launch(Dispatchers.IO) {
-                repository.createAndMoveGroupForEntries(entries, _uiState.value.currentSpace, name)
+                repository.createAndMoveGroupForEntries(
+                    entries,
+                    _uiState.value.currentSpace,
+                    name,
+                    _uiState.value.currentGroupDir,
+                )
                 _uiState.update {
                     it.copy(
                         isMultiSelectMode = false,
@@ -672,7 +725,7 @@ class MindDumpViewModel
                         showGroupMergePicker = false,
                     )
                 }
-                refreshEntries()
+                refreshForCurrentScope()
             }
         }
 

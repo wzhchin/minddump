@@ -38,7 +38,11 @@ sealed class Screen(
 
     data object Statistics : Screen("statistics")
 
-    data object GroupDetail : Screen("group_detail")
+    // groupPath query arg (Uri-encoded absolute path) selects which group to open.
+    data object GroupDetail : Screen("group_detail?groupPath={groupPath}") {
+        fun routeWithGroup(groupPath: String): String =
+            "group_detail?groupPath=${android.net.Uri.encode(groupPath)}"
+    }
 }
 
 @Composable
@@ -103,14 +107,35 @@ fun MindDumpNavGraph(
                     navController.navigate(route)
                 },
                 onNavigateToStatistics = { navController.navigate(Screen.Statistics.route) },
-                onNavigateToGroupDetail = { navController.navigate(Screen.GroupDetail.route) },
+                onNavigateToGroupDetail = { groupPath ->
+                    navController.navigate(Screen.GroupDetail.routeWithGroup(groupPath))
+                },
             )
         }
 
-        composable(Screen.GroupDetail.route) {
-            GroupDetailScreen(
+        composable(
+            route = Screen.GroupDetail.route,
+            arguments = listOf(
+                navArgument("groupPath") {
+                    type = NavType.StringType
+                    nullable = false
+                },
+            ),
+        ) { backStackEntry ->
+            val groupPath = backStackEntry.arguments?.getString("groupPath")?.let {
+                android.net.Uri.decode(it)
+            } ?: return@composable
+            // Same MainScreen composable as the root feed; only currentDir differs.
+            // The route carries which group is open (source of truth for back stack
+            // and process restore). The Camera route is a pushed sibling, so this
+            // composable stays on the back stack during capture — currentGroupDir
+            // is not cleared, and capture lands in this group.
+            MainScreen(
                 viewModel = viewModel,
+                audioRecorder = audioRecorder,
+                currentDir = File(groupPath),
                 onBack = { navController.popBackStack() },
+                onNavigateToCamera = { navController.navigate(Screen.Camera.route) },
                 onNavigateToFullscreenEdit = { entryPath ->
                     val route = if (entryPath != null) {
                         Screen.FullscreenEdit.routeWithEntry(entryPath)
@@ -118,6 +143,9 @@ fun MindDumpNavGraph(
                         Screen.FullscreenEdit.ROUTE_NO_ARG
                     }
                     navController.navigate(route)
+                },
+                onNavigateToGroupDetail = { childPath ->
+                    navController.navigate(Screen.GroupDetail.routeWithGroup(childPath))
                 },
             )
         }

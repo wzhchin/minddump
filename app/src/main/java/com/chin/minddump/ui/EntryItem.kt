@@ -109,8 +109,11 @@ fun EntryList(
     onGroupClick: (File) -> Unit = {},
     onGroupLongClick: (File) -> Unit = {},
 ) {
-    // Loose entries = not in any group. Group cards render separately from members.
-    val looseGrouped = groupEntriesForRender(entries.filter { it.groupPath == null })
+    // The caller pre-scopes [entries] to the current view: at the root feed these
+    // are the ungrouped entries (groupPath == null); inside a group they are that
+    // group's direct members (groupPath == this dir). Either way every passed
+    // entry is rendered as a loose item. Sub-group cards render alongside.
+    val looseGrouped = groupEntriesForRender(entries)
         .map { FeedItem.Loose(it) }
     val groupCards = groups.map { FeedItem.GroupCard(it) }
 

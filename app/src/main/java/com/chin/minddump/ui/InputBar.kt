@@ -11,9 +11,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
@@ -98,6 +100,9 @@ fun InputBar(
     currentSpace: Space,
     actions: InputBarActions,
     modifier: Modifier = Modifier,
+    // Whether the Public/Private space toggle is shown. Hidden inside a group —
+    // space switching is reachable only from the root feed.
+    showSpaceToggle: Boolean = true,
 ) {
     val onInputChange = actions.onInputChange
     val onSubmit = actions.onSubmit
@@ -263,15 +268,22 @@ fun InputBar(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Space switch with rotation animation
-                SpaceSwitchButton(
-                    currentSpace = currentSpace,
-                    onClick = {
-                        spaceRotation += 180f
-                        onSpaceToggle()
-                    },
-                    rotationY = spaceRotationAnimated,
-                )
+                // Space switch with rotation animation. Hidden inside a group
+                // (space switching is only reachable from the root feed).
+                AnimatedVisibility(
+                    visible = showSpaceToggle,
+                    enter = fadeIn(tween(animDuration.short)) + expandHorizontally(),
+                    exit = fadeOut(tween(animDuration.short)) + shrinkHorizontally(),
+                ) {
+                    SpaceSwitchButton(
+                        currentSpace = currentSpace,
+                        onClick = {
+                            spaceRotation += 180f
+                            onSpaceToggle()
+                        },
+                        rotationY = spaceRotationAnimated,
+                    )
+                }
             }
 
             // Row 2: Input field + send button

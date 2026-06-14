@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -39,6 +40,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
@@ -60,6 +62,7 @@ import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.R
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
+import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.ui.components.BiometricGate
@@ -88,7 +91,12 @@ fun MainScreen(
     onNavigateToCamera: () -> Unit = {},
     onNavigateToFullscreenEdit: (entryPath: String?) -> Unit = {},
     onNavigateToStatistics: () -> Unit = {},
-    onNavigateToGroupDetail: () -> Unit = {},
+    onNavigateToGroupDetail: (groupPath: String) -> Unit = {},
+    // The current scope directory. null = root feed (the current month dir,
+    // treated as the root group); a non-null File = an open group page. The same
+    // composable serves every level — the route carries which dir is current.
+    currentDir: java.io.File? = null,
+    onBack: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -96,6 +104,24 @@ fun MainScreen(
     val shapes = LocalExpressiveShapes.current
     val haptics = rememberPremiumHaptics()
     val scope = rememberCoroutineScope()
+
+    // The root month directory is the root group; an open group is just a deeper
+    // current dir. Set it once per route entry — never cleared by a dispose
+    // (returning to root navigates back to the root route, whose currentDir is
+    // null and re-sets the scope via this same effect).
+    LaunchedEffect(currentDir) { viewModel.setCurrentGroupDir(currentDir) }
+
+    val isGroupScope = currentDir != null
+    val groupName = currentDir?.let {
+        FileMetadata.fromFile(it)?.originalName ?: it.name
+    } ?: ""
+    // Direct members of the current scope: root → ungrouped entries, group →
+    // entries whose groupPath matches this dir.
+    val scopeMembers = uiState.entries.filter { entry ->
+        entry.groupPath == currentDir?.absolutePath
+    }
+    // Sub-group cards: month-top groups at root, child groups inside a group.
+    val scopeGroups = if (isGroupScope) uiState.childGroups else uiState.groups
 
     @Suppress("UnusedPrivateProperty")
     var entryToDelete by remember { mutableStateOf<MindDumpEntry?>(null) }
@@ -162,9 +188,10 @@ fun MainScreen(
     // Refresh the group list the moment the action drawer or merge picker opens,
     // so the picker always reflects the latest disk state (fixes the
     // "暂无分组" bug where groups were only loaded as a side-effect of refresh).
+    // Scope-aware: child groups inside a group page, month-top groups at root.
     LaunchedEffect(uiState.selectedEntryForAction, uiState.isMultiSelectMode) {
         if (uiState.selectedEntryForAction != null || uiState.isMultiSelectMode) {
-            viewModel.refreshGroups()
+            viewModel.refreshForCurrentScope()
         }
     }
 
@@ -187,6 +214,20 @@ fun MainScreen(
                             onMergeToGroup = { viewModel.showGroupMergePicker() },
                             onDelete = { viewModel.deleteSelectedEntries() },
                             onDone = { viewModel.exitMultiSelectMode() },
+                        )
+                    } else if (isGroupScope) {
+                        // A group page: back arrow + group name. No search/stats/
+                        // settings here — those are root-feed affordances.
+                        TopAppBar(
+                            title = { Text(groupName.ifBlank { "未命名分组" }) },
+                            navigationIcon = {
+                                IconButton(onClick = onBack) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "返回",
+                                    )
+                                }
+                            },
                         )
                     } else {
                     CenterAlignedTopAppBar(
@@ -291,6 +332,7 @@ fun MainScreen(
                             inputText = uiState.inputText,
                             isRecording = uiState.isRecording,
                             currentSpace = uiState.currentSpace,
+                            showSpaceToggle = !isGroupScope,
                             actions = InputBarActions(
                                 onInputChange = { viewModel.updateInputText(it) },
                                 onSubmit = { viewModel.submitText() },
@@ -320,7 +362,7 @@ fun MainScreen(
                     // Entry list
                     Box(modifier = Modifier.fillMaxSize()) {
                         EntryList(
-                            entries = uiState.entries,
+                            entries = scopeMembers,
                             onEntryClick = { entry ->
                                 if (uiState.isMultiSelectMode) {
                                     viewModel.toggleEntrySelection(entry)
@@ -342,10 +384,10 @@ fun MainScreen(
                             modifier = Modifier.fillMaxSize(),
                             isMultiSelectMode = uiState.isMultiSelectMode,
                             selectedEntries = uiState.selectedEntries,
-                            groups = uiState.groups,
+                            groups = scopeGroups,
                             onGroupClick = { groupDir ->
-                                viewModel.selectGroup(groupDir)
-                                onNavigateToGroupDetail()
+                                // Drill in: the route entry owns setCurrentGroupDir.
+                                onNavigateToGroupDetail(groupDir.absolutePath)
                             },
                             onGroupLongClick = { groupDir ->
                                 haptics.perform(HapticPattern.Buildup)
@@ -361,7 +403,7 @@ fun MainScreen(
                 EntryActionDrawer(
                     entry = entry,
                     currentSpace = uiState.currentSpace,
-                    groups = uiState.groups.map { it.groupDir },
+                    groups = scopeGroups.map { it.groupDir },
                     onRename = { newName ->
                         viewModel.renameEntry(entry, newName)
                     },
@@ -627,7 +669,7 @@ private fun getMimeType(file: File): String =
         else -> "application/octet-stream"
     }
 
-private fun getFileName(context: Context, uri: Uri): String {
+fun getFileName(context: Context, uri: Uri): String {
     var name = "unknown"
     context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
         val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
