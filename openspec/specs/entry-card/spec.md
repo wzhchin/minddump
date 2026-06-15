@@ -46,9 +46,14 @@ The system SHALL render the card body according to entry type, with media types 
 - **WHEN** an audio recording card is rendered
 - **THEN** the card body shows a document/media chip representing the recording
 
-#### Scenario: Video entry
+#### Scenario: Video entry shows a decoded thumbnail
 - **WHEN** a video card is rendered
-- **THEN** the card body shows the video thumbnail in a large rounded media region with a play overlay
+- **THEN** the card body shows a real decoded first-frame thumbnail of the video (not a blank or black region) in a large rounded media region with a play overlay
+- **AND** the same decoded thumbnail is rendered for video members shown in a group media carousel
+
+#### Scenario: Tapping a video opens the in-app player
+- **WHEN** the user taps a video entry's cover (the thumbnail / play overlay) outside multi-select
+- **THEN** the video opens in the app's full-screen in-app video player (not an external app)
 
 #### Scenario: Generic file entry
 - **WHEN** a generic file card is rendered

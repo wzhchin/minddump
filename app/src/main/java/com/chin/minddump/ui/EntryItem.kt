@@ -70,6 +70,7 @@ import com.chin.minddump.ui.components.EntryCard
 import com.chin.minddump.ui.components.statusLabel
 import com.chin.minddump.ui.GroupedEntry
 import com.chin.minddump.ui.GroupSummary
+import com.chin.minddump.ui.components.VideoPlayerDialog
 import com.chin.minddump.ui.components.ZoomableAsyncImage
 import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
@@ -388,36 +389,55 @@ private fun GroupMediaCarousel(members: List<MindDumpEntry>) {
         itemSpacing = 8.dp,
         contentPadding = PaddingValues(horizontal = 16.dp),
     ) { index ->
-        val member = members[index]
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(16.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            coil3.compose.AsyncImage(
-                model = member.file,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            if (member.type == EntryType.VIDEO) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(26.dp),
-                    )
-                }
+        CarouselMediaTile(member = members[index])
+    }
+}
+
+/**
+ * One carousel tile. Photo tiles are decorative; video tiles open the in-app
+ * player on tap. Each tile owns its own player-open state.
+ */
+@Composable
+private fun CarouselMediaTile(member: MindDumpEntry) {
+    val isVideo = member.type == EntryType.VIDEO
+    var showPlayer by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(16.dp))
+            .then(if (isVideo) Modifier.combinedClickable { showPlayer = true } else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        coil3.compose.AsyncImage(
+            model = member.file,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+        if (isVideo) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(26.dp),
+                )
             }
         }
+    }
+
+    if (showPlayer) {
+        VideoPlayerDialog(
+            file = member.file,
+            onDismissRequest = { showPlayer = false },
+        )
     }
 }
 
@@ -839,6 +859,7 @@ private fun AudioEntryContent(entry: MindDumpEntry) {
 @Composable
 private fun VideoEntryContent(entry: MindDumpEntry) {
     val innerShape = RoundedCornerShape(12.dp)
+    var showPlayer by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -846,10 +867,12 @@ private fun VideoEntryContent(entry: MindDumpEntry) {
             .padding(horizontal = 8.dp)
             .padding(bottom = 8.dp)
             .clip(innerShape)
-            .height(200.dp),
+            .height(200.dp)
+            .combinedClickable { showPlayer = true },
         contentAlignment = Alignment.Center,
     ) {
-        ZoomableAsyncImage(
+        // Plain thumbnail (no built-in tap-to-zoom): tapping opens the video player.
+        coil3.compose.AsyncImage(
             model = entry.file,
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
@@ -871,6 +894,13 @@ private fun VideoEntryContent(entry: MindDumpEntry) {
                 modifier = Modifier.size(28.dp),
             )
         }
+    }
+
+    if (showPlayer) {
+        VideoPlayerDialog(
+            file = entry.file,
+            onDismissRequest = { showPlayer = false },
+        )
     }
 }
 

@@ -82,6 +82,7 @@
     <string name="record_video">Record</string>
     <string name="take_photo">Capture</string>
     <string name="switch_camera">Switch camera</string>
+    <string name="flash">Flash</string>
 
     <!-- Fullscreen edit -->
     <string name="edit_title">Edit</string>

@@ -105,9 +105,14 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.camerax.video)
 
+    // In-app video playback (Media3 ExoPlayer + PlayerView UI)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+
     // Image loading (Coil 3)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.coil.video)
 
     // Zoomable image preview
     implementation(libs.image.viewer)

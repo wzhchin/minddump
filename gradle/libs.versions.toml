@@ -12,6 +12,8 @@ compose = "1.11.2"
 compose-icons = "1.7.8"
 compose-material3 = "1.5.0-alpha21"
 camerax = "1.4.1"
+# media3 modules (exoplayer + ui) must share one version. Used for in-app video playback.
+media3 = "1.4.1"
 core-ktx = "1.17.0"
 lifecycle = "2.9.2"
 activity-compose = "1.10.1"
@@ -54,8 +56,16 @@ camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", vers
 camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 camerax-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
 
+# In-app video playback. exoplayer + ui share the media3 version.
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
+# Decodes the first frame of video files (.mp4) so video entries render a real
+# thumbnail instead of a blank region. AsyncImage resolves this via the Coil
+# singleton ImageLoader registered on the Application.
+coil-video = { group = "io.coil-kt.coil3", name = "coil-video", version.ref = "coil" }
 image-viewer = { group = "com.jvziyaoyao.scale", name = "image-viewer", version.ref = "image-viewer" }
 
 biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
