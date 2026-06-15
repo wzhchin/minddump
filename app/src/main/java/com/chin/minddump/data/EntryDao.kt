@@ -40,15 +40,19 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE space = :space AND monthFolder = :month ORDER BY lastModified DESC")
     fun getByMonth(space: Space, month: String): Flow<List<EntryEntity>>
 
+    // Substring search via GLOB on the raw contentPreview column. GLOB compares
+    // the original text directly, so CJK characters match as a contiguous run
+    // without needing a tokenizer (the FTS 'simple' tokenizer fragmented CJK).
+    // Both sides are LOWER()-ed for ASCII case-insensitivity; the caller passes
+    // the query already escaped and wrapped as '*...*'.
     @Query(
         """
-        SELECT e.* FROM entries e
-        JOIN entries_fts fts ON e.id = fts.rowid
-        WHERE fts.entries_fts MATCH :query AND e.space = :space
-        ORDER BY e.lastModified DESC
+        SELECT * FROM entries
+        WHERE space = :space AND LOWER(contentPreview) GLOB LOWER(:pattern)
+        ORDER BY lastModified DESC
         """,
     )
-    fun search(space: Space, query: String): Flow<List<EntryEntity>>
+    fun search(space: Space, pattern: String): Flow<List<EntryEntity>>
 
     @Query("SELECT * FROM entries WHERE space = :space AND role = :role ORDER BY lastModified DESC")
     fun getByRole(space: Space, role: EntryRole): Flow<List<EntryEntity>>

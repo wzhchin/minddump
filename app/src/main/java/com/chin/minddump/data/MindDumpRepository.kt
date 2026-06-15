@@ -12,6 +12,7 @@ import com.chin.minddump.storage.Space
 import com.chin.minddump.storage.TodoState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -81,12 +82,19 @@ class MindDumpRepository
             }
 
         /**
-         * Search entries using FTS.
+         * Search entries whose content contains [query] as a substring.
+         *
+         * Uses a GLOB substring match on the raw `contentPreview` column rather
+         * than the FTS index, so CJK phrases match correctly without a tokenizer.
+         * Returns an empty flow for a blank query so we never run an all-matching
+         * `**` scan.
          */
-        fun searchEntries(space: Space, query: String): Flow<List<MindDumpEntry>> =
-            dao.search(space, query).map { entities ->
+        fun searchEntries(space: Space, query: String): Flow<List<MindDumpEntry>> {
+            val pattern = SearchGlob.toPattern(query) ?: return flowOf(emptyList())
+            return dao.search(space, pattern).map { entities ->
                 entities.map { it.toEntry() }
             }
+        }
 
         /**
          * Save a text entry: write file + encrypt if Private + insert Room row.

@@ -53,6 +53,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -132,6 +134,16 @@ fun MainScreen(
 
     // Search bar expanded state
     var searchExpanded by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+
+    // Auto-focus the search field as soon as it expands so the keyboard
+    // appears without a second tap. Runs after composition so the field
+    // (created lazily inside AnimatedVisibility) is ready to receive focus.
+    LaunchedEffect(searchExpanded) {
+        if (searchExpanded) {
+            runCatching { searchFocusRequester.requestFocus() }
+        }
+    }
 
     // App bar background color animation
     val appBarContainerColor by animateColorAsState(
@@ -259,6 +271,7 @@ fun MainScreen(
                                         onValueChange = { viewModel.updateSearchQuery(it) },
                                         modifier = Modifier
                                             .fillMaxWidth()
+                                            .focusRequester(searchFocusRequester)
                                             .padding(end = 8.dp),
                                         placeholder = { Text(stringResource(R.string.search_placeholder)) },
                                         singleLine = true,
@@ -336,8 +349,8 @@ fun MainScreen(
                     }
                 },
                 bottomBar = {
-                    // Hide the input bar during multi-select
-                    if (!uiState.isMultiSelectMode) {
+                    // Hide the input bar during multi-select and while searching
+                    if (!uiState.isMultiSelectMode && !searchExpanded) {
                         InputBar(
                             inputText = uiState.inputText,
                             isRecording = uiState.isRecording,
