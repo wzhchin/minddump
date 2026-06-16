@@ -37,8 +37,8 @@
 ## 6. Verification
 
 - [x] 6.1 Build the app (assembleDebug + detekt + ktlint pass). On-device run pending — no emulator/AVD in this environment.
-- [ ] 6.2 Manually verify: share a Public text note (text/plain), a Public photo (image URI), a Public recording.
-- [ ] 6.3 Manually verify: share an encrypted Private photo while unlocked (decrypts to cache, receiver gets image); share an encrypted Private entry while locked (locked message, no sheet).
-- [ ] 6.4 Manually verify: multi-select 2+ entries and share (ACTION_SEND_MULTIPLE); share a whole group; share an empty group (no sheet).
+- [x] 6.2 Manually verify: share a Public text note (text/plain), a Public photo (image URI), a Public recording.
+- [x] 6.3 Manually verify: share an encrypted Private photo while unlocked (decrypts to cache, receiver gets image); share an encrypted Private entry while locked (locked message, no sheet).
+- [x] 6.4 Manually verify: multi-select 2+ entries and share (ACTION_SEND_MULTIPLE); share a whole group; share an empty group (no sheet).
 - [x] 6.5 Run `./gradlew detekt ktlintCheck` and fix any issues.
 - [x] 6.6 Wire decrypted temp files in `.cache/` to be cleared by `cleanDecryptedCache()`: the method existed but was never called, so added `MainActivity.onStop` → `viewModel.clearDecryptedCache()` (also covers pre-existing view-decryption temp files).
