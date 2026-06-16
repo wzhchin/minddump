@@ -87,6 +87,9 @@ data class MindDumpUiState(
     // Share intent
     val pendingShareItems: List<ShareItem>? = null,
     val shareError: String? = null,
+    // Outbound share: a one-shot payload to hand to the system Share sheet, or a
+    // Locked signal to surface as a message. Null = nothing pending.
+    val shareResult: MindDumpRepository.ShareResult? = null,
     // Entry actions
     val selectedEntryForAction: MindDumpEntry? = null,
     // Multi-select
@@ -521,6 +524,46 @@ class MindDumpViewModel
 
         fun clearEntryAction() {
             _uiState.update { it.copy(selectedEntryForAction = null) }
+        }
+
+        /**
+         * Resolve [entries] to a shareable payload and expose it for the UI to
+         * hand to the system Share sheet. Surfaces [ShareResult.Locked] when an
+         * encrypted Private entry can't be decrypted, instead of sharing.
+         */
+        fun shareEntries(entries: List<MindDumpEntry>) {
+            if (entries.isEmpty()) return
+            viewModelScope.launch(Dispatchers.IO) {
+                val result = repository.prepareEntriesForShare(entries)
+                _uiState.update { it.copy(shareResult = result) }
+            }
+        }
+
+        /**
+         * Resolve every member of a group and share them together. An empty group
+         * emits nothing (no empty Share sheet).
+         */
+        fun shareGroup(groupDir: File) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val members = repository.getGroupMemberEntries(groupDir)
+                if (members.isEmpty()) return@launch
+                val result = repository.prepareEntriesForShare(members)
+                _uiState.update { it.copy(shareResult = result) }
+            }
+        }
+
+        /** Clear the one-shot [shareResult] after the UI has acted on it. */
+        fun consumeShareResult() {
+            _uiState.update { it.copy(shareResult = null) }
+        }
+
+        /**
+         * Clear transient plaintext files decrypted to `.cache/` for viewing and
+         * sharing. Called from the activity's [onStop] so decrypted copies don't
+         * outlive the user's session with the app.
+         */
+        fun clearDecryptedCache() {
+            repository.cleanDecryptedCache()
         }
 
         fun renameEntry(entry: MindDumpEntry, newName: String?) {

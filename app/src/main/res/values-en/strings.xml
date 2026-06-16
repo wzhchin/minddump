@@ -106,6 +106,10 @@
     <string name="share_saved_unencrypted">Saved (unencrypted)</string>
     <string name="share_error">Some items failed to save</string>
 
+    <!-- Outbound share -->
+    <string name="share">Share</string>
+    <string name="share_locked">Private content is locked. Unlock first to share.</string>
+
     <!-- Theme settings -->
     <string name="theme_section">Appearance</string>
     <string name="theme_customize">Customize theme</string>

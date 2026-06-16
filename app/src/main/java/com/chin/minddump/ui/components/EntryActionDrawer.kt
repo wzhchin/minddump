@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,7 +65,7 @@ import java.io.File
 // Action drawer aggregates many callbacks + their conditional sub-dialogs by design.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-@Suppress("LongParameterList", "LongMethod")
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 fun EntryActionDrawer(
     entry: MindDumpEntry,
     currentSpace: Space,
@@ -80,6 +81,7 @@ fun EntryActionDrawer(
     onTogglePin: (() -> Unit)? = null,
     onSetStatus: ((TodoState) -> Unit)? = null,
     onAddComment: ((String) -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
@@ -153,6 +155,18 @@ fun EntryActionDrawer(
                     onClick = {
                         haptics.perform(HapticPattern.Tick)
                         showCommentDialog = true
+                    },
+                )
+            }
+            // Share — the one action comments DO get; exports to other apps.
+            if (onShare != null) {
+                ActionItem(
+                    icon = Icons.Filled.Share,
+                    label = stringResource(R.string.share),
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onShare()
+                        onDismiss()
                     },
                 )
             }
@@ -550,6 +564,7 @@ fun MultiSelectTopBar(
     onMergeToGroup: () -> Unit,
     onDelete: () -> Unit,
     onDone: () -> Unit,
+    onShare: () -> Unit = {},
 ) {
     androidx.compose.material3.TopAppBar(
         title = { Text("已选 $selectedCount 项") },
@@ -557,6 +572,7 @@ fun MultiSelectTopBar(
             TextButton(onClick = onDone) { Text("取消") }
         },
         actions = {
+            TextButton(onClick = onShare) { Text(stringResource(R.string.share)) }
             TextButton(onClick = onMergeToGroup) { Text("合并为分组") }
             TextButton(onClick = onDelete) {
                 Text("删除", color = MaterialTheme.colorScheme.error)
@@ -581,6 +597,7 @@ fun GroupActionSheet(
     onDismiss: () -> Unit,
     onTogglePin: (() -> Unit)? = null,
     onSetStatus: ((TodoState) -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
@@ -642,6 +659,17 @@ fun GroupActionSheet(
                     onRename()
                 },
             )
+            if (onShare != null) {
+                ActionItem(
+                    icon = Icons.Filled.Share,
+                    label = stringResource(R.string.share),
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onShare()
+                        onDismiss()
+                    },
+                )
+            }
             ActionItem(
                 icon = Icons.Filled.Delete,
                 label = "解散分组",

@@ -61,6 +61,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chin.minddump.audio.AudioRecorder
+import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.R
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
@@ -143,6 +144,22 @@ fun MainScreen(
         if (searchExpanded) {
             runCatching { searchFocusRequester.requestFocus() }
         }
+    }
+
+    // Dispatch the one-shot outbound-share result: open the Share sheet on a
+    // resolved payload, or surface a locked-session message.
+    LaunchedEffect(uiState.shareResult) {
+        val result = uiState.shareResult ?: return@LaunchedEffect
+        when (result) {
+            is MindDumpRepository.ShareResult.Payload -> shareContent(context, result.files)
+            MindDumpRepository.ShareResult.Locked -> {
+                snackbarHostState.showSnackbar(
+                    message = context.getString(R.string.share_locked),
+                    duration = SnackbarDuration.Short,
+                )
+            }
+        }
+        viewModel.consumeShareResult()
     }
 
     // App bar background color animation
@@ -236,6 +253,9 @@ fun MainScreen(
                             onMergeToGroup = { viewModel.showGroupMergePicker() },
                             onDelete = { viewModel.deleteSelectedEntries() },
                             onDone = { viewModel.exitMultiSelectMode() },
+                            onShare = {
+                                viewModel.shareEntries(uiState.selectedEntries.toList())
+                            },
                         )
                     } else if (isGroupScope) {
                         // A group page: back arrow + group name. No search/stats/
@@ -454,6 +474,9 @@ fun MainScreen(
                     onAddComment = { content ->
                         viewModel.addComment(entry, content)
                     },
+                    onShare = {
+                        viewModel.shareEntries(listOf(entry))
+                    },
                     onDismiss = { viewModel.clearEntryAction() },
                 )
             }
@@ -478,6 +501,9 @@ fun MainScreen(
                     },
                     onSetStatus = { state ->
                         viewModel.setGroupStatus(groupDir, state)
+                    },
+                    onShare = {
+                        viewModel.shareGroup(groupDir)
                     },
                     onDismiss = { viewModel.dismissGroupMenu() },
                 )
@@ -731,6 +757,58 @@ private fun getMimeType(file: File): String =
         file.name.endsWith(".pdf") -> "application/pdf"
         else -> "application/octet-stream"
     }
+
+/**
+ * Launch the system Share sheet for one or more resolved plaintext [files].
+ *
+ * A single text/markdown file shares its text inline via `EXTRA_TEXT` (the most
+ * compatible form for chat apps). Everything else shares content URIs via
+ * FileProvider: `ACTION_SEND` for one file, `ACTION_SEND_MULTIPLE` for many.
+ * The launched intent grants read permission on every URI it carries.
+ */
+fun shareContent(context: Context, files: List<File>) {
+    if (files.isEmpty()) return
+    val authority = "${context.packageName}.fileprovider"
+
+    // Single text entry → share its text directly.
+    val singleText = files.singleOrNull()?.takeIf {
+        it.extension.equals("md", ignoreCase = true) ||
+            it.extension.equals("txt", ignoreCase = true)
+    }
+    if (singleText != null) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, singleText.readText())
+        }
+        runCatching {
+            context.startActivity(Intent.createChooser(intent, null))
+        }
+        return
+    }
+
+    val uris = ArrayList<Uri>(files.size)
+    for (file in files) {
+        val uri = androidx.core.content.FileProvider
+            .getUriForFile(context, authority, file)
+        uris.add(uri)
+    }
+
+    val intent = if (uris.size == 1) {
+        Intent(Intent.ACTION_SEND).apply {
+            type = getMimeType(files.first())
+            putExtra(Intent.EXTRA_STREAM, uris.first())
+        }
+    } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "*/*"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+        }
+    }
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, null))
+    }
+}
 
 fun getFileName(context: Context, uri: Uri): String {
     var name = "unknown"

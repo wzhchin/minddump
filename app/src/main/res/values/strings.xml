@@ -106,6 +106,10 @@
     <string name="share_saved_unencrypted">已保存（未加密）</string>
     <string name="share_error">部分内容保存失败</string>
 
+    <!-- Outbound share -->
+    <string name="share">分享</string>
+    <string name="share_locked">私密内容已锁定，请先解锁后再分享</string>
+
     <!-- Theme settings -->
     <string name="theme_section">外观</string>
     <string name="theme_customize">自定义主题</string>

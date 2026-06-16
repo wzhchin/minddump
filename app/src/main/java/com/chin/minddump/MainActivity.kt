@@ -46,6 +46,12 @@ class MainActivity : ComponentActivity() {
         viewModel?.let { handleShareIfNeeded(it, intent) }
     }
 
+    override fun onStop() {
+        super.onStop()
+        // Wipe transient plaintext files decrypted to .cache/ for viewing/sharing.
+        viewModel?.clearDecryptedCache()
+    }
+
     private fun handleShareIfNeeded(vm: MindDumpViewModel, intent: Intent?) {
         val action = intent?.action
         if (action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE) {

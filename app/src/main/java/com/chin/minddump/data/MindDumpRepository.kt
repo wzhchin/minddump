@@ -237,6 +237,19 @@ class MindDumpRepository
         }
 
         /**
+         * Outcome of resolving entries for outbound sharing.
+         * [Payload] carries the plaintext files ready to hand to a share intent;
+         * [Locked] means an encrypted Private entry was requested while the
+         * session password is gone, so nothing is shared.
+         */
+        sealed interface ShareResult {
+            data class Payload(
+                val files: List<File>,
+            ) : ShareResult
+            data object Locked : ShareResult
+        }
+
+        /**
          * Overwrite an existing text/comment entry's content in place.
          * Preserves the file's path and identity; bumps lastModified so the entry
          * floats to the top of the feed. Re-encrypts when the entry was encrypted.
@@ -587,6 +600,51 @@ class MindDumpRepository
                 cacheDir.listFiles()?.forEach { it.delete() }
             }
         }
+
+        /**
+         * Resolve a batch of entries to plaintext [File]s for outbound sharing.
+         * Encrypted Private (`.enc`) entries are decrypted to `.cache/` under the
+         * FileProvider-exposed root; plaintext entries are returned as-is. The
+         * decrypted temp files share the same lifecycle as view-decryption files
+         * and are cleared by [cleanDecryptedCache].
+         *
+         * Returns [ShareResult.Locked] (without preparing anything) when any
+         * encrypted entry is requested while the session password is gone.
+         */
+        suspend fun prepareEntriesForShare(entries: List<MindDumpEntry>): ShareResult =
+            withContext(Dispatchers.IO) {
+                // Bail before any side effect if we'd hit a locked encrypted entry.
+                val needsPassword = entries.any { cryptoEngine.isEncryptedFile(it.file) }
+                if (needsPassword && sessionPassword == null) {
+                    return@withContext ShareResult.Locked
+                }
+
+                val resolved = entries.map { entry -> resolveShareFile(entry) }
+                ShareResult.Payload(resolved)
+            }
+
+        /**
+         * Resolve one entry to a shareable plaintext [File]: decrypt `.enc`
+         * entries to a `.cache/` temp file, return plaintext entries directly.
+         */
+        private fun resolveShareFile(entry: MindDumpEntry): File =
+            if (cryptoEngine.isEncryptedFile(entry.file)) {
+                val cacheDir = File(storageEngine.getRootDir(), ".cache")
+                if (!cacheDir.exists()) cacheDir.mkdirs()
+                val tempFile = File(cacheDir, entry.file.nameWithoutExtension)
+                cryptoEngine.decryptFile(entry.file, tempFile, sessionPassword!!)
+                tempFile
+            } else {
+                entry.file
+            }
+
+        /**
+         * Load the member entries of a group directory for whole-group sharing.
+         */
+        suspend fun getGroupMemberEntries(groupDir: File): List<MindDumpEntry> =
+            withContext(Dispatchers.IO) {
+                dao.getEntriesInGroupSnapshot(groupDir.absolutePath).map { it.toEntry() }
+            }
 
         /**
          * Wipe the database and repopulate it entirely from disk.
