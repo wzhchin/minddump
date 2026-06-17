@@ -175,4 +175,10 @@
     <string name="empty_trash">Empty trash</string>
     <string name="empty_trash_confirm">This permanently deletes every item in Trash. This cannot be undone. Continue?</string>
     <string name="trashed_n_days_ago">Moved to trash %1$d days ago</string>
+    <!-- Launcher shortcuts (long-press app icon) -->
+    <string name="shortcut_new_text">New note</string>
+    <string name="shortcut_photo">Photo</string>
+    <string name="shortcut_record">Record</string>
+    <string name="shortcut_open_public">Open Public</string>
+    <string name="shortcut_open_private">Open Private</string>
 </resources>

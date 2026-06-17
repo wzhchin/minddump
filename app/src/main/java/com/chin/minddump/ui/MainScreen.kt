@@ -238,6 +238,21 @@ fun MainScreen(
         }
     }
 
+    // Consume a launcher-shortcut action staged by MainActivity. Capture actions
+    // need the permission launchers defined above (hence staged, not fired from
+    // the activity); permission prompts fire normally if not yet granted.
+    LaunchedEffect(uiState.pendingShortcutAction) {
+        when (uiState.pendingShortcutAction) {
+            ShortcutAction.NEW_TEXT -> onNavigateToFullscreenEdit(null)
+            ShortcutAction.PHOTO -> cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+            ShortcutAction.RECORD -> audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+            ShortcutAction.OPEN_PUBLIC, ShortcutAction.OPEN_PRIVATE, null -> Unit
+        }
+        if (uiState.pendingShortcutAction != null) {
+            viewModel.consumeShortcutAction()
+        }
+    }
+
     // --- Theme + Layout ---
     // Private space forces a dark theme (privacy), overriding the user's mode pref.
     val baseThemePrefs = viewModel.themePreferences.collectAsState().value

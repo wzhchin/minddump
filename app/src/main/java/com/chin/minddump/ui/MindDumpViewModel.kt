@@ -46,6 +46,19 @@ data class GroupedEntry(
 )
 
 /**
+ * Custom intent actions backing the static launcher shortcuts. Shared between the
+ * manifest intent-filters, [shortcut's res/xml/shortcuts.xml], and the
+ * [MindDumpViewModel.dispatchShortcutAction] dispatcher.
+ */
+object ShortcutActions {
+    const val NEW_TEXT = "com.chin.minddump.action.NEW_TEXT"
+    const val PHOTO = "com.chin.minddump.action.PHOTO"
+    const val RECORD = "com.chin.minddump.action.RECORD"
+    const val OPEN_PUBLIC = "com.chin.minddump.action.OPEN_PUBLIC"
+    const val OPEN_PRIVATE = "com.chin.minddump.action.OPEN_PRIVATE"
+}
+
+/**
  * A group directory summary for rendering in the main list.
  * [memberEntries] powers the count, type chips, and the newest-member timestamp
  * used to position the group card in the time-ordered feed.
@@ -116,7 +129,23 @@ data class MindDumpUiState(
     // Recycle bin (soft-delete) state
     val showTrash: Boolean = false,
     val trashedItems: List<TrashedItem> = emptyList(),
+    // One-shot action staged by a launcher shortcut (long-press app icon), consumed
+    // by the UI to fire the matching capture/navigation entry point.
+    val pendingShortcutAction: ShortcutAction? = null,
 )
+
+/**
+ * Launcher-shortcut actions. PHOTO/RECORD are staged for the UI to consume (they
+ * need permission launchers that live in composables); the rest are handled
+ * directly when dispatched.
+ */
+enum class ShortcutAction {
+    NEW_TEXT,
+    PHOTO,
+    RECORD,
+    OPEN_PUBLIC,
+    OPEN_PRIVATE,
+}
 
 @HiltViewModel
 @Suppress("TooManyFunctions", "LargeClass")
@@ -259,6 +288,55 @@ class MindDumpViewModel
          */
         fun cancelSpaceSwitch() {
             _uiState.update { it.copy(pendingSpaceSwitch = false) }
+        }
+
+        // --- Launcher shortcuts (long-press app icon) ---
+
+        /**
+         * Dispatch a launcher-shortcut action by its intent action string. Space
+         * switches are applied immediately; capture/edit actions are staged as
+         * [ShortcutAction] for the UI to consume once its permission launchers and
+         * nav controller exist.
+         */
+        fun dispatchShortcutAction(action: String?) {
+            val shortcut = when (action) {
+                ShortcutActions.NEW_TEXT -> ShortcutAction.NEW_TEXT
+                ShortcutActions.PHOTO -> ShortcutAction.PHOTO
+                ShortcutActions.RECORD -> ShortcutAction.RECORD
+                ShortcutActions.OPEN_PUBLIC -> {
+                    requestSwitchToSpace(Space.PUBLIC)
+                    return
+                }
+                ShortcutActions.OPEN_PRIVATE -> {
+                    requestSwitchToSpace(Space.PRIVATE)
+                    return
+                }
+                else -> return
+            }
+            _uiState.update { it.copy(pendingShortcutAction = shortcut) }
+        }
+
+        /**
+         * Clear a consumed staged shortcut action.
+         */
+        fun consumeShortcutAction() {
+            _uiState.update { it.copy(pendingShortcutAction = null) }
+        }
+
+        /**
+         * Switch straight to [space] from a shortcut, mirroring the in-app toggle
+         * but without flipping back if already there.
+         */
+        private fun requestSwitchToSpace(space: Space) {
+            if (space == Space.PRIVATE && !repository.isSessionUnlocked()) {
+                if (repository.hasPrivatePassword()) {
+                    _uiState.update { it.copy(showPasswordInput = true, pendingSpaceSwitch = true) }
+                } else {
+                    _uiState.update { it.copy(showPasswordSetup = true, pendingSpaceSwitch = true) }
+                }
+            } else {
+                applySpaceSwitch(space)
+            }
         }
 
         private fun applySpaceSwitch(newSpace: Space) {

@@ -175,4 +175,10 @@
     <string name="empty_trash">清空回收站</string>
     <string name="empty_trash_confirm">将永久删除回收站中的所有项目，此操作不可恢复。确定继续？</string>
     <string name="trashed_n_days_ago">%1$d 天前移入回收站</string>
+    <!-- Launcher shortcuts (long-press app icon) -->
+    <string name="shortcut_new_text">新建笔记</string>
+    <string name="shortcut_photo">拍照</string>
+    <string name="shortcut_record">录音</string>
+    <string name="shortcut_open_public">打开公开</string>
+    <string name="shortcut_open_private">打开私密</string>
 </resources>

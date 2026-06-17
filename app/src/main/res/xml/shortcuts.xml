@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="new_text"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_text"
+        android:shortcutShortLabel="@string/shortcut_new_text"
+        android:shortcutLongLabel="@string/shortcut_new_text">
+        <intent
+            android:action="com.chin.minddump.action.NEW_TEXT"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.chin.minddump.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="photo"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_photo"
+        android:shortcutShortLabel="@string/shortcut_photo"
+        android:shortcutLongLabel="@string/shortcut_photo">
+        <intent
+            android:action="com.chin.minddump.action.PHOTO"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.chin.minddump.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="record"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_record"
+        android:shortcutShortLabel="@string/shortcut_record"
+        android:shortcutLongLabel="@string/shortcut_record">
+        <intent
+            android:action="com.chin.minddump.action.RECORD"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.chin.minddump.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="open_public"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_public"
+        android:shortcutShortLabel="@string/shortcut_open_public"
+        android:shortcutLongLabel="@string/shortcut_open_public">
+        <intent
+            android:action="com.chin.minddump.action.OPEN_PUBLIC"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.chin.minddump.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="open_private"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_private"
+        android:shortcutShortLabel="@string/shortcut_open_private"
+        android:shortcutLongLabel="@string/shortcut_open_private">
+        <intent
+            android:action="com.chin.minddump.action.OPEN_PRIVATE"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.chin.minddump.MainActivity" />
+    </shortcut>
+
+</shortcuts>

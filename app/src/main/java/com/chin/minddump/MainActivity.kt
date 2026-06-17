@@ -10,6 +10,7 @@ import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.camera.CameraManager
 import com.chin.minddump.ui.MindDumpNavGraph
 import com.chin.minddump.ui.MindDumpViewModel
+import com.chin.minddump.ui.ShortcutActions
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -31,8 +32,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val vm: MindDumpViewModel = hiltViewModel()
             viewModel = vm
-            // Handle share intent that launched the activity
-            handleShareIfNeeded(vm, intent)
+            // Handle the intent that launched the activity (share or shortcut).
+            handleLaunchingIntent(vm, intent)
             MindDumpNavGraph(
                 viewModel = vm,
                 cameraManager = cameraManager,
@@ -43,7 +44,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        viewModel?.let { handleShareIfNeeded(it, intent) }
+        viewModel?.let { handleLaunchingIntent(it, intent) }
     }
 
     override fun onStop() {
@@ -52,10 +53,21 @@ class MainActivity : ComponentActivity() {
         viewModel?.clearDecryptedCache()
     }
 
-    private fun handleShareIfNeeded(vm: MindDumpViewModel, intent: Intent?) {
-        val action = intent?.action
-        if (action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE) {
-            vm.handleShareIntent(intent)
+    /**
+     * Route a launching intent to its handler: an inbound share goes to the share
+     * flow; a launcher-shortcut action goes to the shortcut dispatcher. Other
+     * actions (a plain launcher tap) do nothing.
+     */
+    private fun handleLaunchingIntent(vm: MindDumpViewModel, intent: Intent?) {
+        val action = intent?.action ?: return
+        when (action) {
+            Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> vm.handleShareIntent(intent)
+            ShortcutActions.NEW_TEXT,
+            ShortcutActions.PHOTO,
+            ShortcutActions.RECORD,
+            ShortcutActions.OPEN_PUBLIC,
+            ShortcutActions.OPEN_PRIVATE,
+            -> vm.dispatchShortcutAction(action)
         }
     }
 }
