@@ -41,6 +41,7 @@ fun SettingsDialog(
     onAmoledChange: (Boolean) -> Unit,
     onChangeDir: () -> Unit,
     onRebuildDatabase: () -> Unit,
+    onOpenTrash: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val haptics = rememberPremiumHaptics()
@@ -112,6 +113,17 @@ fun SettingsDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                // ── Recycle bin ──
+                OutlinedButton(
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onOpenTrash()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.trash))
+                }
             }
         },
         confirmButton = {

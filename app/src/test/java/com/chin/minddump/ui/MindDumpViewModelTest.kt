@@ -3,13 +3,18 @@ package com.chin.minddump.ui
 import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.data.ThemePreferencesRepository
 import com.chin.minddump.storage.Space
+import com.chin.minddump.storage.TrashedItem
+import com.chin.minddump.storage.EntryType
 import com.chin.minddump.ui.theme.ThemePreferences
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import java.io.File
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -187,5 +192,48 @@ class MindDumpViewModelTest {
         vm.cancelPasswordDialog()
         assertFalse(vm.uiState.value.showPasswordSetup)
         assertEquals(Space.PUBLIC, vm.uiState.value.currentSpace)
+    }
+
+    @Test
+    fun `openTrash shows trash screen`() {
+        every { mockRepository.listTrashed(any()) } returns emptyList()
+        val vm = createViewModel()
+        testScope.advanceUntilIdle()
+        vm.openTrash()
+        testScope.advanceUntilIdle()
+        assertTrue(vm.uiState.value.showTrash)
+    }
+
+    @Test
+    fun `restoreTrashed delegates to repository and refreshes`() {
+        every { mockRepository.listTrashed(any()) } returns emptyList()
+        val item = TrashedItem(File("/tmp/x.md"), EntryType.TEXT, Space.PUBLIC, 0L)
+        val vm = createViewModel()
+        testScope.advanceUntilIdle()
+        vm.restoreTrashed(item)
+        // VM launches on Dispatchers.IO (real pool); let it drain before verifying.
+        Thread.sleep(100)
+        coVerify { mockRepository.restoreTrashed(item.file, Space.PUBLIC) }
+    }
+
+    @Test
+    fun `emptyTrash delegates to repository and refreshes`() {
+        every { mockRepository.listTrashed(any()) } returns emptyList()
+        val vm = createViewModel()
+        testScope.advanceUntilIdle()
+        vm.emptyTrash()
+        Thread.sleep(100)
+        coVerify(exactly = 1) { mockRepository.emptyTrash() }
+    }
+
+    @Test
+    fun `deleteTrashedForever delegates to repository`() {
+        every { mockRepository.listTrashed(any()) } returns emptyList()
+        val item = TrashedItem(File("/tmp/y.jpg"), EntryType.PHOTO, Space.PRIVATE, 0L)
+        val vm = createViewModel()
+        testScope.advanceUntilIdle()
+        vm.deleteTrashedForever(item)
+        Thread.sleep(100)
+        coVerify { mockRepository.deleteTrashedForever(item.file) }
     }
 }

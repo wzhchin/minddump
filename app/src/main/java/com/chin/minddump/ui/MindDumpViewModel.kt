@@ -15,6 +15,7 @@ import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.ShareItem
 import com.chin.minddump.storage.Space
 import com.chin.minddump.storage.TodoState
+import com.chin.minddump.storage.TrashedItem
 import com.chin.minddump.ui.theme.AppPaletteStyle
 import com.chin.minddump.ui.theme.AppThemeMode
 import com.chin.minddump.ui.theme.ThemePreferences
@@ -112,6 +113,9 @@ data class MindDumpUiState(
     val groupToRename: File? = null,
     // Long-press group action menu state
     val groupMenuFor: File? = null,
+    // Recycle bin (soft-delete) state
+    val showTrash: Boolean = false,
+    val trashedItems: List<TrashedItem> = emptyList(),
 )
 
 @HiltViewModel
@@ -848,6 +852,53 @@ class MindDumpViewModel
                         selectedEntries = emptySet(),
                     )
                 }
+            }
+        }
+
+        // --- Recycle bin (soft delete) ---
+
+        /** Open the trash list, refreshing its contents. */
+        fun openTrash() {
+            refreshTrash()
+            _uiState.update { it.copy(showTrash = true) }
+        }
+
+        /** Close the trash list and refresh the live feed (a restore may have changed it). */
+        fun closeTrash() {
+            _uiState.update { it.copy(showTrash = false) }
+            refreshForCurrentScope()
+        }
+
+        /** Re-scan the trash for both spaces. */
+        fun refreshTrash() {
+            viewModelScope.launch(Dispatchers.IO) {
+                val items = (repository.listTrashed(Space.PUBLIC) + repository.listTrashed(Space.PRIVATE))
+                    .sortedByDescending { it.trashedAt }
+                _uiState.update { it.copy(trashedItems = items) }
+            }
+        }
+
+        /** Restore a trashed item back to its live space, then refresh both lists. */
+        fun restoreTrashed(item: TrashedItem) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.restoreTrashed(item.file, item.space)
+                refreshTrash()
+            }
+        }
+
+        /** Permanently delete a single trashed item. */
+        fun deleteTrashedForever(item: TrashedItem) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.deleteTrashedForever(item.file)
+                refreshTrash()
+            }
+        }
+
+        /** Permanently delete every trashed item. */
+        fun emptyTrash() {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.emptyTrash()
+                refreshTrash()
             }
         }
 

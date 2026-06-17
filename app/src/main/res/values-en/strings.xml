@@ -26,7 +26,7 @@
 
     <!-- Delete -->
     <string name="delete_title">Delete entry</string>
-    <string name="delete_message">Are you sure you want to delete \"%1$s\"?</string>
+    <string name="delete_message">Are you sure you want to delete \"%1$s\"?\nIt can be restored from Trash.</string>
     <string name="delete_confirm">Delete</string>
     <string name="cancel">Cancel</string>
 
@@ -166,4 +166,13 @@
     <string name="status_wait">Waiting</string>
     <string name="status_done">Done</string>
     <string name="status_cancel">Canceled</string>
+    <!-- Recycle bin (soft delete) -->
+    <string name="trash">Trash</string>
+    <string name="trash_empty">Trash is empty</string>
+    <string name="restore">Restore</string>
+    <string name="delete_forever">Delete forever</string>
+    <string name="delete_forever_confirm">Permanently delete \"%1$s\"? This cannot be undone.</string>
+    <string name="empty_trash">Empty trash</string>
+    <string name="empty_trash_confirm">This permanently deletes every item in Trash. This cannot be undone. Continue?</string>
+    <string name="trashed_n_days_ago">Moved to trash %1$d days ago</string>
 </resources>

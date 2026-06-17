@@ -39,7 +39,7 @@ class FileStorageEngineTest {
     }
 
     @Test
-    fun `scanEntries returns entries sorted by lastModified newest first`() {
+    fun `scanEntries returns entries sorted by filename newest first`() {
         val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
         val file1 =
             File(monthDir, "2401-01-010000-f.md").also {
@@ -59,9 +59,11 @@ class FileStorageEngineTest {
 
         val entries = engine.scanEntries(Space.PUBLIC)
         assertEquals(3, entries.size)
-        assertEquals(file2, entries[0].file) // newest first
-        assertEquals(file1, entries[1].file)
-        assertEquals(file3, entries[2].file) // oldest last
+        // Sorted by filename descending — pin sentinel aside, this is newest-first
+        // by timestamp regardless of the mtime values set above.
+        assertEquals(file3, entries[0].file)
+        assertEquals(file2, entries[1].file)
+        assertEquals(file1, entries[2].file)
     }
 
     @Test
@@ -146,7 +148,7 @@ class FileStorageEngineTest {
     }
 
     @Test
-    fun `deleteEntry removes file from disk`() {
+    fun `deleteEntry removes file from disk permanently`() {
         val file = engine.saveTextEntry(Space.PUBLIC, "to be deleted")
         val entry =
             MindDumpEntry(
@@ -161,6 +163,113 @@ class FileStorageEngineTest {
 
         assertTrue(result)
         assertFalse(file.exists())
+    }
+
+    @Test
+    fun `trashEntry moves file into trash preserving relative path`() {
+        val file = engine.saveTextEntry(Space.PUBLIC, "to be trashed")
+        val entry =
+            MindDumpEntry(
+                file = file,
+                type = EntryType.TEXT,
+                space = Space.PUBLIC,
+                monthFolder = file.parentFile!!.name,
+                timestamp = "2401-01-010000",
+            )
+
+        val trashed = engine.trashEntry(entry)
+
+        assertFalse(file.exists())
+        assertTrue(trashed.exists())
+        assertTrue(trashed.absolutePath.contains(".trash/Public"))
+        // Live scan no longer lists it.
+        assertFalse(engine.scanEntries(Space.PUBLIC).any { it.file.name == file.name })
+    }
+
+    @Test
+    fun `restoreTrashed returns the entry to its live path`() {
+        val file = engine.saveTextEntry(Space.PUBLIC, "to be restored")
+        val entry =
+            MindDumpEntry(
+                file = file,
+                type = EntryType.TEXT,
+                space = Space.PUBLIC,
+                monthFolder = file.parentFile!!.name,
+                timestamp = "2401-01-010000",
+            )
+        val trashed = engine.trashEntry(entry)
+
+        val restored = engine.restoreTrashed(trashed, Space.PUBLIC)
+
+        assertFalse(trashed.exists())
+        assertTrue(restored.exists())
+        assertEquals(file.absolutePath, restored.absolutePath)
+        assertTrue(engine.scanEntries(Space.PUBLIC).any { it.file.name == file.name })
+    }
+
+    @Test
+    fun `restoreTrashed avoids overwriting a colliding live entry`() {
+        val original = engine.saveTextEntry(Space.PUBLIC, "first")
+        val entry =
+            MindDumpEntry(
+                file = original,
+                type = EntryType.TEXT,
+                space = Space.PUBLIC,
+                monthFolder = original.parentFile!!.name,
+                timestamp = "2401-01-010000",
+            )
+        val trashed = engine.trashEntry(entry)
+        // Re-create a file at the same live path before restoring.
+        original.writeText("newer occupant")
+        original.parentFile?.mkdirs()
+
+        val restored = engine.restoreTrashed(trashed, Space.PUBLIC)
+
+        assertNotEquals(original.absolutePath, restored.absolutePath)
+        assertTrue(restored.exists())
+        assertTrue(original.exists())
+    }
+
+    @Test
+    fun `listTrashed returns items newest first`() {
+        // Two entries with distinct timestamps so each parses as its own file.
+        val monthDir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        val a = File(monthDir, "2401-01-010000-f.md").also { it.writeText("a") }
+        val b = File(monthDir, "2401-01-020000-f.md").also { it.writeText("b") }
+        engine.trashFile(a, Space.PUBLIC)
+        Thread.sleep(10)
+        engine.trashFile(b, Space.PUBLIC)
+
+        val items = engine.listTrashed(Space.PUBLIC)
+
+        assertEquals(2, items.size)
+        assertEquals(b.name, items.first().file.name)
+    }
+
+    @Test
+    fun `purgeExpired removes only old items`() {
+        val fresh = engine.saveTextEntry(Space.PUBLIC, "fresh")
+        val stale = engine.saveTextEntry(Space.PUBLIC, "stale")
+        val freshTrashed = engine.trashFile(fresh, Space.PUBLIC)
+        val staleTrashed = engine.trashFile(stale, Space.PUBLIC)
+        // Age the stale one beyond the retention window.
+        staleTrashed.setLastModified(System.currentTimeMillis() - 31L * 24 * 60 * 60 * 1000)
+
+        engine.purgeExpired()
+
+        assertTrue(freshTrashed.exists())
+        assertFalse(staleTrashed.exists())
+    }
+
+    @Test
+    fun `emptyTrash clears the whole trash tree`() {
+        engine.trashFile(engine.saveTextEntry(Space.PUBLIC, "x"), Space.PUBLIC)
+        engine.trashFile(engine.saveTextEntry(Space.PRIVATE, "y"), Space.PRIVATE)
+
+        engine.emptyTrash()
+
+        assertTrue(engine.listTrashed(Space.PUBLIC).isEmpty())
+        assertTrue(engine.listTrashed(Space.PRIVATE).isEmpty())
     }
 
     @Test

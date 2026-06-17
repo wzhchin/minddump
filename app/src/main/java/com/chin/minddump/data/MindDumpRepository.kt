@@ -9,6 +9,7 @@ import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.FileStorageEngine
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
+import com.chin.minddump.storage.TrashedItem
 import com.chin.minddump.storage.TodoState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -569,14 +570,69 @@ class MindDumpRepository
             }
 
         /**
-         * Delete an entry: remove file + delete Room row.
+         * Delete an entry: move its file to `.trash/` (recoverable) and drop the
+         * Room row so it leaves the feed immediately. Restore re-indexes it via the
+         * normal reconcile once the file is back at a live path.
          */
         suspend fun deleteEntry(entry: MindDumpEntry) =
             withContext(Dispatchers.IO) {
-                Timber.d("Deleting entry: %s", entry.file.name)
-                storageEngine.deleteEntry(entry)
+                Timber.d("Trashing entry: %s", entry.file.name)
+                storageEngine.trashEntry(entry)
                 dao.deleteByPath(entry.file.absolutePath)
             }
+
+        /**
+         * Soft-delete a group directory: move the whole tree into `.trash/` and drop
+         * every member row. Members travel with the group and restore together.
+         */
+        suspend fun deleteGroup(groupDir: File, space: Space) =
+            withContext(Dispatchers.IO) {
+                Timber.d("Trashing group: %s", groupDir.name)
+                val members = dao.getEntriesInGroupSnapshot(groupDir.absolutePath)
+                storageEngine.trashGroup(groupDir, space)
+                members.forEach { dao.deleteByPath(it.filePath) }
+            }
+
+        /**
+         * Restore a trashed item back to its live location, then reconcile so the
+         * Room row returns.
+         */
+        suspend fun restoreTrashed(trashedFile: File, space: Space) =
+            withContext(Dispatchers.IO) {
+                storageEngine.restoreTrashed(trashedFile, space)
+                reconcileWithDisk(space)
+            }
+
+        /**
+         * Permanently delete a single trashed item. No Room row to touch — it was
+         * already removed at trash time.
+         */
+        suspend fun deleteTrashedForever(trashedFile: File) =
+            withContext(Dispatchers.IO) {
+                storageEngine.deleteTrashedForever(trashedFile)
+            }
+
+        /**
+         * Permanently delete every trashed item.
+         */
+        suspend fun emptyTrash() =
+            withContext(Dispatchers.IO) {
+                storageEngine.emptyTrash()
+            }
+
+        /**
+         * Purge trashed items older than the retention window. Best-effort.
+         */
+        suspend fun purgeExpiredTrash() =
+            withContext(Dispatchers.IO) {
+                runCatching { storageEngine.purgeExpired() }
+                    .onFailure { Timber.e(it, "Trash purge failed") }
+            }
+
+        /**
+         * List trashed items for [space], newest-trashed first.
+         */
+        fun listTrashed(space: Space): List<TrashedItem> = storageEngine.listTrashed(space)
 
         /**
          * Decrypt a file for viewing. Returns a temp file in cache.
@@ -668,6 +724,9 @@ class MindDumpRepository
         suspend fun reconcileWithDisk(space: Space) =
             withContext(Dispatchers.IO) {
                 Timber.d("Reconciling entries from disk for %s", space.name)
+                // Opportunistic retention: drop expired trash before re-scanning.
+                runCatching { storageEngine.purgeExpired() }
+                    .onFailure { Timber.e(it, "Trash purge failed") }
                 val diskEntries = storageEngine.scanEntries(space)
                 val diskPathMap = diskEntries.associateBy { it.file.absolutePath }
                 val dbEntities = dao.getAllSnapshot(space)

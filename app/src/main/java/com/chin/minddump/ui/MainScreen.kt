@@ -80,6 +80,7 @@ import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.RebuildDatabaseDialog
 import com.chin.minddump.ui.components.SettingsDialog
+import com.chin.minddump.ui.components.TrashScreen
 import com.chin.minddump.ui.components.SpaceSelectionDialog
 import com.chin.minddump.ui.theme.AppThemeMode
 import com.chin.minddump.ui.theme.HapticPattern
@@ -567,6 +568,10 @@ fun MainScreen(
                     onAmoledChange = { enabled -> viewModel.setAmoled(enabled) },
                     onChangeDir = { dirPickerLauncher.launch(null) },
                     onRebuildDatabase = { viewModel.showRebuildDatabaseDialog() },
+                    onOpenTrash = {
+                        viewModel.setShowSettings(false)
+                        viewModel.openTrash()
+                    },
                     onDismiss = { viewModel.setShowSettings(false) },
                 )
             }
@@ -596,6 +601,15 @@ fun MainScreen(
                     onCancel = { viewModel.cancelMigration() },
                 )
             }
+
+            TrashScreen(
+                visible = uiState.showTrash,
+                items = uiState.trashedItems,
+                onRestore = { viewModel.restoreTrashed(it) },
+                onDeleteForever = { viewModel.deleteTrashedForever(it) },
+                onEmptyTrash = { viewModel.emptyTrash() },
+                onBack = { viewModel.closeTrash() },
+            )
 
             val activity = context as? androidx.fragment.app.FragmentActivity
             if (uiState.pendingSpaceSwitch && activity != null) {

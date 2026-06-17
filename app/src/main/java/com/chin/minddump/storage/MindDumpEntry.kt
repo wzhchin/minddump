@@ -25,6 +25,19 @@ enum class Space(
     PRIVATE("Private"),
 }
 
+/**
+ * A file currently held in `.trash/`. The original live location is recoverable
+ * from the file's preserved relative path beneath its space; [trashedAt] (the
+ * file's mtime, refreshed at trash time) drives retention. Content is never
+ * decrypted — [type] is derived from the filename.
+ */
+data class TrashedItem(
+    val file: File,
+    val type: EntryType,
+    val space: Space,
+    val trashedAt: Long,
+)
+
 enum class EntryType {
     TEXT,
     RECORDING,

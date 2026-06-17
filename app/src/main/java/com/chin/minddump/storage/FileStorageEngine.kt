@@ -9,6 +9,7 @@ import java.io.IOException
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import timber.log.Timber
 
 /**
  * Handles all file operations for MindDump.
@@ -27,6 +28,12 @@ class FileStorageEngine(
         private const val DEFAULT_ROOT_DIR = "MindDump"
         private val MONTH_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM")
         private val TIMESTAMP_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyMM-dd-HHmmss")
+
+        /** Name of the hidden trash holding dir, a sibling of Public/Private under root. */
+        const val TRASH_DIR_NAME = ".trash"
+
+        /** Entries trashed longer ago than this (days) are purged opportunistically. */
+        const val TRASH_RETENTION_DAYS = 30L
     }
 
     private fun nowTimestampStr(): String = LocalDateTime.now().format(TIMESTAMP_FORMAT)
@@ -482,7 +489,144 @@ class FileStorageEngine(
     }
 
     /**
-     * Delete an entry file.
+     * The trash holding directory, a sibling of Public/Private under the root.
+     * Trashed files keep their exact relative path beneath their space, so restore
+     * is a pure path inversion with no side store.
+     */
+    fun trashRoot(): File = File(getRootDir(), TRASH_DIR_NAME)
+
+    /**
+     * Relative path of [file] beneath its space root (the part after `Public/` or
+     * `Private/`). Used to mirror the live location inside `.trash/<space>/`.
+     */
+    private fun relPathUnderSpace(file: File, space: Space): String {
+        val spaceRoot = File(getRootDir(), space.folderName).absolutePath
+        val abs = file.absolutePath
+        check(abs.startsWith(spaceRoot)) {
+            "File $abs is not under ${space.folderName} root $spaceRoot"
+        }
+        return abs.removePrefix(spaceRoot).removePrefix(File.separator)
+    }
+
+    /**
+     * Soft-delete an entry: move its file into `.trash/<space>/<relPath>`, creating
+     * the mirror directory structure. The rename refreshes mtime, which becomes the
+     * trash age used for retention. Returns the trashed file.
+     */
+    fun trashEntry(entry: MindDumpEntry): File = trashFile(entry.file, entry.space)
+
+    /**
+     * Move an arbitrary live file belonging to [space] into the trash, preserving
+     * its relative path. Powers both single-entry and batch trashing.
+     */
+    fun trashFile(file: File, space: Space): File {
+        val rel = relPathUnderSpace(file, space)
+        val target = File(File(trashRoot(), space.folderName), rel)
+        target.parentFile?.mkdirs()
+        check(file.renameTo(target)) {
+            "Failed to trash ${file.absolutePath} -> ${target.absolutePath}"
+        }
+        return target
+    }
+
+    /**
+     * Soft-delete a group directory: move the whole tree (members and nested
+     * sub-groups) into `.trash/<space>/<relPath>`.
+     */
+    fun trashGroup(groupDir: File, space: Space): File {
+        val rel = relPathUnderSpace(groupDir, space)
+        val target = File(File(trashRoot(), space.folderName), rel)
+        target.parentFile?.mkdirs()
+        check(groupDir.renameTo(target)) {
+            "Failed to trash group ${groupDir.absolutePath} -> ${target.absolutePath}"
+        }
+        return target
+    }
+
+    /**
+     * Restore a trashed file/dir back under its space root at the preserved path.
+     * On a collision with an existing live entry, append `_1`, `_2`, … to the name
+     * so restore never overwrites. Returns the restored file/dir.
+     */
+    fun restoreTrashed(trashedFile: File, space: Space): File {
+        val trashSpaceRoot = File(trashRoot(), space.folderName).absolutePath
+        check(trashedFile.absolutePath.startsWith(trashSpaceRoot)) {
+            "File ${trashedFile.absolutePath} is not in trash for ${space.folderName}"
+        }
+        val rel = trashedFile.absolutePath.removePrefix(trashSpaceRoot).removePrefix(File.separator)
+        var target = File(File(getRootDir(), space.folderName), rel)
+        if (target == trashedFile) return target
+        var seq = 1
+        while (target.exists()) {
+            val suffix = "_$seq"
+            val parent = target.parentFile ?: error("Restored target has no parent: $target")
+            target = File(parent, trashedFile.name + suffix)
+            seq++
+        }
+        target.parentFile?.mkdirs()
+        check(trashedFile.renameTo(target)) {
+            "Failed to restore ${trashedFile.absolutePath} -> ${target.absolutePath}"
+        }
+        return target
+    }
+
+    /**
+     * Permanently delete a single trashed item (file or directory tree).
+     */
+    fun deleteTrashedForever(trashedFile: File): Boolean =
+        if (trashedFile.isDirectory) trashedFile.deleteRecursively() else trashedFile.delete()
+
+    /**
+     * Permanently delete every trashed item by removing the whole `.trash/` tree.
+     */
+    fun emptyTrash(): Boolean = trashRoot().deleteRecursively()
+
+    /**
+     * Delete trashed files older than [retentionDays], measured by mtime (refreshed
+     * at trash time). A trashed group directory is removed recursively once it (or
+     * every member) is expired. Best-effort: logs and skips on per-item failure.
+     */
+    fun purgeExpired(retentionDays: Long = TRASH_RETENTION_DAYS) {
+        val root = trashRoot()
+        if (!root.exists()) return
+        val cutoff = System.currentTimeMillis() - retentionDays * 24L * 60L * 60L * 1000L
+        root.walkTopDown().forEach { node ->
+            if (!node.exists()) return@forEach
+            if (node == root) return@forEach
+            if (node.lastModified() < cutoff) {
+                val deleted = if (node.isDirectory) node.deleteRecursively() else node.delete()
+                if (!deleted) Timber.w("Failed to purge expired trash item %s", node.absolutePath)
+            }
+        }
+    }
+
+    /**
+     * List trashed items for [space], newest-trashed first. Files only (a trashed
+     * group is represented by its member files, mirroring how live entries list).
+     * Never decrypts — type is derived from the filename via [FileMetadata].
+     */
+    fun listTrashed(space: Space): List<TrashedItem> {
+        val spaceTrash = File(trashRoot(), space.folderName)
+        if (!spaceTrash.exists()) return emptyList()
+        return spaceTrash
+            .walkTopDown()
+            .filter { it.isFile }
+            .mapNotNull { file ->
+                val meta = FileMetadata.fromFile(file) ?: return@mapNotNull null
+                if (meta.role == EntryRole.GROUP) return@mapNotNull null
+                TrashedItem(
+                    file = file,
+                    type = meta.entryType,
+                    space = space,
+                    trashedAt = file.lastModified(),
+                )
+            }.sortedByDescending { it.trashedAt }
+            .toList()
+    }
+
+    /**
+     * Delete an entry file permanently (bypasses trash). Retained for explicit
+     * destructive paths; normal delete routes through [trashEntry].
      */
     fun deleteEntry(entry: MindDumpEntry): Boolean = entry.file.delete()
 
