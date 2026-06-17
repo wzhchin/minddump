@@ -1,14 +1,20 @@
 package com.chin.minddump.data
 
 import android.net.Uri
+import com.chin.minddump.notification.EventScheduler
 import com.chin.minddump.security.CryptoEngine
 import com.chin.minddump.security.PasswordStore
+import com.chin.minddump.storage.EntryEvent
+import com.chin.minddump.storage.EntryMeta
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
+import com.chin.minddump.storage.EventState
 import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.FileStorageEngine
+import com.chin.minddump.storage.MetaYamlCodec
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
+import com.chin.minddump.storage.TagValidator
 import com.chin.minddump.storage.TrashedItem
 import com.chin.minddump.storage.TodoState
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +28,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 class MindDumpRepository
     @Inject
     constructor(
@@ -30,6 +36,7 @@ class MindDumpRepository
         private val storageEngine: FileStorageEngine,
         private val cryptoEngine: CryptoEngine,
         private val passwordStore: PasswordStore,
+        private val eventScheduler: EventScheduler,
     ) {
         private val dao get() = database.entryDao()
 
@@ -75,12 +82,82 @@ class MindDumpRepository
         fun isSessionUnlocked(): Boolean = sessionPassword != null
 
         /**
+         * Called after Private is unlocked: decrypt every Private owner's sidecar
+         * and backfill its tags/events into Room (clearing [metaEncrypted]).
+         * Returns all now-readable [EntryEvent]s with their owning entry, so the
+         * scheduler can register future-dues (past-dues are NOT retro-fired).
+         */
+        suspend fun onPrivateUnlocked(): List<Pair<MindDumpEntry, EntryEvent>> =
+            withContext(Dispatchers.IO) {
+                val owners = dao.getAllSnapshot(Space.PRIVATE).map { it.toEntry() }
+                val firedKeys = mutableListOf<Pair<MindDumpEntry, EntryEvent>>()
+                owners.forEach { entry ->
+                    val meta = loadEntryMeta(entry)
+                    if (meta.isEmpty && !hasSidecar(entry)) {
+                        // nothing to do
+                        dao.deleteByPath(entry.file.absolutePath)
+                        dao.insert(
+                            entry
+                                .copy(metaEncrypted = false)
+                                .toEntity(
+                                    contentPreview = contentPreviewOf(entry),
+                                    isEncrypted = cryptoEngine.isEncryptedFile(entry.file),
+                                ).copy(lastModified = effectiveLastModified(entry)),
+                        )
+                        return@forEach
+                    }
+                    val refreshed = entry.copy(
+                        tags = meta.tags,
+                        events = meta.events,
+                        metaEncrypted = false,
+                    )
+                    dao.deleteByPath(entry.file.absolutePath)
+                    dao.insert(
+                        refreshed
+                            .toEntity(
+                                contentPreview = contentPreviewOf(refreshed),
+                                isEncrypted = cryptoEngine.isEncryptedFile(refreshed.file),
+                            ).copy(lastModified = effectiveLastModified(refreshed)),
+                    )
+                    // Register only future pending events; past-dues stay silent (no retro-fire).
+                    registerEvents(refreshed)
+                    meta.events.forEach { ev -> firedKeys.add(refreshed to ev) }
+                }
+                firedKeys
+            }
+
+        /** Whether an owner currently has a sidecar file on disk. */
+        private fun hasSidecar(entry: MindDumpEntry): Boolean =
+            runCatching {
+                storageEngine.sidecarFileFor(entry.file, entry.space == Space.PRIVATE).exists()
+            }.getOrDefault(false)
+
+        /**
          * Observe entries for a space, sorted by lastModified DESC.
          */
         fun getEntries(space: Space): Flow<List<MindDumpEntry>> =
             dao.getAll(space).map { entities ->
                 entities.map { it.toEntry() }
             }
+
+        /** One-shot snapshot of all entries in a space (for boot re-registration). */
+        suspend fun getAllEntries(space: Space): List<MindDumpEntry> =
+            withContext(Dispatchers.IO) {
+                dao.getAllSnapshot(space).map { it.toEntry() }
+            }
+
+        /**
+         * Observe entries in [space] carrying [tag]. The `tags` column joins tags
+         * with a U+0001 separator, so the match pattern wraps the tag in seps and
+         * also accepts an exact single-tag row.
+         */
+        fun getEntriesByTag(space: Space, tag: String): Flow<List<MindDumpEntry>> {
+            val sep = com.chin.minddump.storage.META_TAGS_SEPARATOR
+            // Match tag appearing as the sole value or between separators.
+            val escaped = tag.replace("*", "\\*").replace("?", "\\?")
+            val pattern = "*$sep$escaped$sep*"
+            return dao.getByTag(space, pattern).map { it.map { e -> e.toEntry() } }
+        }
 
         /**
          * Search entries whose content contains [query] as a substring.
@@ -304,6 +381,159 @@ class MindDumpRepository
                     entry.file.readText()
                 }
             }
+
+        // ── Metadata sidecar (tags + scheduled events) ──
+
+        /**
+         * Load the parsed [EntryMeta] for [entry], decrypting the Private sidecar
+         * when the session is unlocked. Returns [EntryMeta.EMPTY] when there is no
+         * sidecar or the Private sidecar is still encrypted (locked).
+         */
+        suspend fun loadEntryMeta(entry: MindDumpEntry): EntryMeta =
+            withContext(Dispatchers.IO) {
+                val encrypted = entry.space == Space.PRIVATE
+                val sidecar = storageEngine.sidecarFileFor(entry.file, encrypted)
+                if (!sidecar.exists()) return@withContext EntryMeta.EMPTY
+                val text = if (encrypted) {
+                    val password = sessionPassword ?: return@withContext EntryMeta.EMPTY
+                    val temp = File(storageEngine.getRootDir(), ".cache/${sidecar.nameWithoutExtension}")
+                    temp.parentFile?.mkdirs()
+                    runCatching {
+                        cryptoEngine.decryptFile(sidecar, temp, password)
+                        temp.readText().also { temp.delete() }
+                    }.getOrElse {
+                        Timber.w(it, "Failed to decrypt sidecar %s", sidecar.name)
+                        return@withContext EntryMeta.EMPTY
+                    }
+                } else {
+                    storageEngine.readSidecarText(sidecar)
+                }
+                MetaYamlCodec.decode(text)
+            }
+
+        /**
+         * Persist [meta] as the sidecar for [entry], encrypting in Private.
+         * Removes the sidecar file entirely when [meta] is empty (no tags and no
+         * events), so no empty `m.yaml` lingers. Refreshes the owner's Room row.
+         */
+        suspend fun saveEntryMeta(entry: MindDumpEntry, meta: EntryMeta): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val encrypted = entry.space == Space.PRIVATE
+                val sidecar = storageEngine.sidecarFileFor(entry.file, encrypted)
+
+                if (meta.isEmpty) {
+                    sidecar.delete()
+                } else {
+                    val yaml = MetaYamlCodec.encode(meta)
+                    if (encrypted) {
+                        val password = sessionPassword ?: error("Session not unlocked for Private meta")
+                        val work = File(storageEngine.getRootDir(), ".cache/${sidecar.nameWithoutExtension}")
+                        work.parentFile?.mkdirs()
+                        storageEngine.writeSidecarText(work, yaml)
+                        cryptoEngine.encryptFile(work, sidecar, password)
+                        work.delete()
+                    } else {
+                        storageEngine.writeSidecarText(sidecar, yaml)
+                    }
+                }
+
+                // Refresh the owner row so tags/events + the bumped sidecar mtime flow in.
+                dao.deleteByPath(entry.file.absolutePath)
+                val refreshed = entry.copy(
+                    tags = meta.tags,
+                    events = meta.events,
+                    metaEncrypted = false,
+                )
+                dao.insert(
+                    refreshed.toEntity(
+                        contentPreview = contentPreviewOf(refreshed),
+                        isEncrypted = cryptoEngine.isEncryptedFile(entry.file),
+                    ),
+                )
+                refreshed
+            }
+
+        /** Add a tag to [entry] (case-insensitive dedup). No-op if invalid/present. */
+        suspend fun addTag(entry: MindDumpEntry, tag: String): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val meta = loadEntryMeta(entry)
+                val updated = meta.copy(tags = TagValidator.addUnique(meta.tags, tag))
+                if (updated.tags == meta.tags) entry else saveEntryMeta(entry, updated)
+            }
+
+        /** Remove a tag from [entry] (case-insensitive match). */
+        suspend fun removeTag(entry: MindDumpEntry, tag: String): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val meta = loadEntryMeta(entry)
+                val updated = meta.copy(tags = TagValidator.remove(meta.tags, tag))
+                saveEntryMeta(entry, updated)
+            }
+
+        /** Schedule a [once] pending event on [entry] and register its alarm. */
+        suspend fun addEvent(entry: MindDumpEntry, event: EntryEvent): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val meta = loadEntryMeta(entry)
+                val updated = meta.copy(events = meta.events + event)
+                val refreshed = saveEntryMeta(entry, updated)
+                scheduleEvent(refreshed, event)
+                refreshed
+            }
+
+        /**
+         * Mark a fired event's state. Used by the alarm receiver after firing.
+         * Safe to call from a non-UI context; returns when no matching event.
+         */
+        suspend fun markEventFired(
+            ownerPath: String,
+            eventKey: String,
+        ) = withContext(Dispatchers.IO) {
+            val entity = dao.findByPath(ownerPath) ?: return@withContext
+            val entry = entity.toEntry()
+            val meta = loadEntryMeta(entry)
+            val updated = meta.copy(
+                events = meta.events.map { ev ->
+                    if (ev.key() == eventKey) ev.copy(state = EventState.FIRED) else ev
+                },
+            )
+            saveEntryMeta(entry, updated)
+        }
+
+        /** Snapshot all distinct tags in a space (for autocomplete). */
+        suspend fun distinctTags(space: Space): List<String> =
+            withContext(Dispatchers.IO) {
+                dao
+                    .getAllSnapshot(space)
+                    .flatMap { it.toEntry().tags }
+                    .distinctBy { it.lowercase() }
+                    .sorted()
+            }
+
+        /** Register one event's alarm (cancel-then-set, idempotent). */
+        private fun scheduleEvent(entry: MindDumpEntry, event: EntryEvent) {
+            eventScheduler.schedule(
+                owner = entry.file,
+                ownerName = entry.file.name,
+                space = entry.space,
+                eventKey = event.key(),
+                dueAtMillis = event.dueMillis(),
+                alreadyFired = event.state == EventState.FIRED,
+            )
+        }
+
+        /** Register all pending/future events for one entry (post-unlock, post-edit). */
+        fun registerEvents(entry: MindDumpEntry) {
+            entry.events.forEach { ev ->
+                if (ev.state != EventState.FIRED) scheduleEvent(entry, ev)
+            }
+        }
+
+        /**
+         * Register all pending Public events (e.g. at app start, after reconcile).
+         * Private events are registered on unlock via [onPrivateUnlocked].
+         */
+        suspend fun registerAllPublicEvents() = withContext(Dispatchers.IO) {
+            getAllEntries(Space.PUBLIC).forEach(::registerEvents)
+        }
 
         /**
          * Create a new group and return its directory.
@@ -745,10 +975,12 @@ class MindDumpRepository
                             } else {
                                 null
                             }
-                            entry.copy(targetTimestamp = targetTs).toEntity(
-                                contentPreview = preview,
-                                isEncrypted = isEncrypted,
-                            )
+                            entry
+                                .copy(targetTimestamp = targetTs)
+                                .toEntity(
+                                    contentPreview = preview,
+                                    isEncrypted = isEncrypted,
+                                ).copy(lastModified = effectiveLastModified(entry))
                         },
                     )
                 }
@@ -761,11 +993,11 @@ class MindDumpRepository
                     dao.deleteByPaths(orphanPaths)
                 }
 
-                // 3. Update stale entries (lastModified changed)
+                // 3. Update stale entries (owner OR its sidecar changed since last reconcile)
                 val toUpdate = dbEntities
                     .filter { dbEntity ->
                         val diskEntry = diskPathMap[dbEntity.filePath] ?: return@filter false
-                        dbEntity.lastModified != diskEntry.file.lastModified()
+                        dbEntity.lastModified != effectiveLastModified(diskEntry)
                     }.map { dbEntity ->
                         val diskEntry = diskPathMap[dbEntity.filePath]!!
                         val preview = if (diskEntry.type == EntryType.TEXT) {
@@ -780,13 +1012,16 @@ class MindDumpRepository
                             ""
                         }
                         dbEntity.copy(
-                            lastModified = diskEntry.file.lastModified(),
+                            lastModified = effectiveLastModified(diskEntry),
                             contentPreview = preview,
                             isEncrypted = cryptoEngine.isEncryptedFile(diskEntry.file),
                             groupPath = diskEntry.groupPath,
                             targetTimestamp = diskEntry.targetTimestamp,
                             isPinned = diskEntry.isPinned,
                             todoState = diskEntry.todoState,
+                            tags = EntryTagsCodec.encode(diskEntry.tags),
+                            events = EntryEventCodec.encode(diskEntry.events),
+                            metaEncrypted = diskEntry.metaEncrypted,
                         )
                     }
                 if (toUpdate.isNotEmpty()) {
@@ -901,4 +1136,20 @@ class MindDumpRepository
             } else {
                 ""
             }
+
+        /**
+         * The mtime used for staleness: the later of the owner file and its
+         * metadata sidecar, so editing only the sidecar (a tag/event change)
+         * still marks the entry stale and refreshes Room. Falls back to the
+         * owner mtime when no sidecar exists.
+         */
+        private fun effectiveLastModified(entry: MindDumpEntry): Long {
+            val ownerMtime = entry.file.lastModified()
+            val encrypted = entry.space == Space.PRIVATE
+            val sidecar = runCatching {
+                storageEngine.sidecarFileFor(entry.file, encrypted)
+            }.getOrNull() ?: return ownerMtime
+            if (!sidecar.exists()) return ownerMtime
+            return maxOf(ownerMtime, sidecar.lastModified())
+        }
     }

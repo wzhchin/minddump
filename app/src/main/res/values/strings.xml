@@ -181,4 +181,26 @@
     <string name="shortcut_record">录音</string>
     <string name="shortcut_open_public">打开公开</string>
     <string name="shortcut_open_private">打开私密</string>
+
+    <!-- Notification channels -->
+    <string name="channel_reminders_name">提醒</string>
+    <string name="channel_reminders_desc">条目定时事件到点提醒</string>
+    <string name="channel_digest_name">汇总</string>
+    <string name="channel_digest_desc">每日回顾与后台任务通知</string>
+
+    <!-- Scheduled events -->
+    <string name="event_add">添加提醒</string>
+    <string name="event_remove">移除提醒</string>
+    <string name="event_due_at">提醒时间</string>
+    <string name="event_fired">已提醒</string>
+    <string name="event_pending">待提醒</string>
+    <string name="event_notification_title">提醒</string>
+    <string name="event_private_locked_hint">私密空间的提醒在解锁前不会触发</string>
+    <string name="event_enable_notifications_hint">未开启通知权限，事件仍会记录但不会显示提醒</string>
+
+    <!-- Tags -->
+    <string name="tag_add">添加标签</string>
+    <string name="tag_invalid">标签不能包含空格、# 或 /</string>
+    <string name="tag_filter_label">标签筛选</string>
+    <string name="tag_filter_all">全部</string>
 </resources>

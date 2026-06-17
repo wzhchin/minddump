@@ -16,6 +16,9 @@ data class MindDumpEntry(
     val groupPath: String? = null, // For files inside a group: the group directory path
     val isPinned: Boolean = false, // Encoded as a `9999-` filename prefix
     val todoState: TodoState = TodoState.NONE, // Encoded as a status token in the filename
+    val tags: List<String> = emptyList(), // From the `m` sidecar
+    val events: List<EntryEvent> = emptyList(), // From the `m` sidecar
+    val metaEncrypted: Boolean = false, // True when a Private sidecar is not yet decrypted
 )
 
 enum class Space(

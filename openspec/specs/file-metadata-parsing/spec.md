@@ -3,7 +3,7 @@
 Centralized file metadata parsing from filenames, eliminating duplicate timestamp extraction and `.enc` suffix handling across the codebase.
 ## Requirements
 ### Requirement: FileMetadata value class
-The system SHALL provide a `FileMetadata` data class in the `storage` package that encapsulates all metadata extracted from a single file: `entryType`, `timestamp`, `isEncrypted`, and `rawFileName`.
+The system SHALL provide a `FileMetadata` data class in the `storage` package that encapsulates all metadata extracted from a single file: `entryType`, `timestamp`, `role`, `isEncrypted`, and `rawFileName`. The `role` SHALL be one of `FILE`, `COMMENT`, `GROUP`, or `META`. A file with the `META` role (`{ts}-m.yaml[.enc]`) SHALL parse with `role == META` and SHALL carry no original name.
 
 #### Scenario: Parse a plaintext text entry
 - **WHEN** `FileMetadata.fromFile(file)` is called with a file named `文字_143022123.md`
@@ -20,6 +20,14 @@ The system SHALL provide a `FileMetadata` data class in the `storage` package th
 #### Scenario: Parse a file with no underscore separator
 - **WHEN** `FileMetadata.fromFile(file)` is called with a file named `orphan.jpg`
 - **THEN** the result has `entryType == UNKNOWN`, `timestamp == ""`, `isEncrypted == false`
+
+#### Scenario: Parse a plaintext metadata sidecar
+- **WHEN** `FileMetadata.fromFile(file)` is called with a file named `2506-13-143022-m.yaml`
+- **THEN** the result has `role == META`, `timestamp == "2506-13-143022"`, `isEncrypted == false`
+
+#### Scenario: Parse an encrypted metadata sidecar
+- **WHEN** `FileMetadata.fromFile(file)` is called with a file named `2506-13-143022-m.yaml.enc`
+- **THEN** the result has `role == META`, `timestamp == "2506-13-143022"`, `isEncrypted == true`
 
 ### Requirement: Single parsing entry point
 The system SHALL eliminate duplicate timestamp extraction and `.enc` suffix handling. `FileStorageEngine.scanEntries()` and `MindDumpRepository` SHALL use `FileMetadata.fromFile()` as the sole mechanism for extracting metadata from filenames. No other code SHALL manually call `removeSuffix(".enc")` or split on `"_"` to extract timestamps.

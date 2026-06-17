@@ -380,6 +380,30 @@ class FileStorageEngine(
     }
 
     /**
+     * Resolve the sidecar path for an owner entry. The sidecar is a sibling of
+     * the owner (in the owner's parent directory) named `{ts}-m.yaml[.enc]`.
+     * [encrypted] selects the `.yaml.enc` (Private) vs `.yaml` (Public) form.
+     */
+    fun sidecarFileFor(owner: File, encrypted: Boolean): File {
+        val ts = FileMetadata.fromFile(owner)?.timestamp
+            ?: error("Cannot derive timestamp for owner: ${owner.name}")
+        val name = if (encrypted) "$ts-m.yaml.enc" else "$ts-m.yaml"
+        return File(owner.parentFile, name)
+    }
+
+    /**
+     * Write a plaintext (Public) sidecar's [content] to [sidecarFile], creating
+     * parent dirs if needed. Callers delete the file when content is empty.
+     */
+    fun writeSidecarText(sidecarFile: File, content: String) {
+        sidecarFile.parentFile?.mkdirs()
+        sidecarFile.writeText(content)
+    }
+
+    /** Read a sidecar's text (caller handles decryption for encrypted ones). */
+    fun readSidecarText(sidecarFile: File): String = sidecarFile.readText()
+
+    /**
      * Scan group directories in the current month for a given space.
      * Equivalent to scanning the current month directory's children.
      */
@@ -402,7 +426,15 @@ class FileStorageEngine(
      * Scan all entries for a given space, sorted by lastModified (newest first).
      * Uses FileMetadata for parsing — skips non-MindDump files.
      * Recursively scans group directories and populates groupPath.
+     *
+     * Indexed roles: FILE, COMMENT, GROUP (directories are now indexed as their
+     * own entries). META sidecars (`m.yaml` / `m.yaml.enc`) are NOT entries —
+     * they are paired to their owner by timestamp alignment and folded into the
+     * owner's [MindDumpEntry.tags] / [MindDumpEntry.events]. Private encrypted
+     * sidecars are left unread here (lazy decryption happens on unlock), so the
+     * owner is marked [MindDumpEntry.metaEncrypted] = true with empty meta.
      */
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     fun scanEntries(space: Space): List<MindDumpEntry> {
         val spaceDir = File(getRootDir(), space.folderName)
         if (!spaceDir.exists()) return emptyList()
@@ -410,45 +442,107 @@ class FileStorageEngine(
         val entries = mutableListOf<MindDumpEntry>()
 
         fun scanDirectory(dir: File, monthFolder: String, groupPath: String?) {
-            dir
-                .listFiles()
-                ?.filter { it.isFile }
-                ?.forEach { file ->
-                    val meta = FileMetadata.fromFile(file) ?: return@forEach
-                    // Only index FILE and COMMENT roles, skip GROUP (those are directories)
-                    if (meta.role == EntryRole.GROUP) return@forEach
+            val children = dir.listFiles() ?: return
 
-                    entries.add(
-                        MindDumpEntry(
-                            file = file,
-                            type = meta.entryType,
-                            space = space,
-                            monthFolder = monthFolder,
-                            timestamp = meta.timestamp,
-                            role = meta.role,
-                            targetTimestamp = null, // derived during reconciliation
-                            groupPath = groupPath,
-                            isPinned = meta.isPinned,
-                            todoState = meta.todoState,
-                        ),
-                    )
-                }
+            // Map timestamp -> parsed sidecar content present in THIS directory.
+            // A sidecar pairs with the owner (file or group subdir) whose
+            // timestamp matches; group sidecars live as siblings in the parent.
+            val sidecarsByTimestamp = mutableMapOf<String, SidecarPayload>()
+            children.forEach { child ->
+                if (!child.isFile) return@forEach
+                val meta = FileMetadata.fromFile(child) ?: return@forEach
+                if (meta.role != EntryRole.META) return@forEach
+                sidecarsByTimestamp[meta.timestamp] = readSidecar(child, meta.isEncrypted)
+            }
 
-            // Recurse into group directories
-            dir
-                .listFiles()
-                ?.filter { it.isDirectory }
-                ?.forEach { subDir ->
-                    val subMeta = FileMetadata.fromFile(subDir)
-                    if (subMeta?.role == EntryRole.GROUP) {
-                        scanDirectory(subDir, monthFolder, subDir.absolutePath)
-                    }
+            // Group subdirectories of this dir, keyed by timestamp (their sidecars
+            // live here too). Indexed as GROUP entries and recursed into.
+            val groupSubDirsByTimestamp = mutableMapOf<String, File>()
+            children.forEach { child ->
+                if (!child.isDirectory) return@forEach
+                val subMeta = FileMetadata.fromFile(child)
+                if (subMeta?.role == EntryRole.GROUP) {
+                    groupSubDirsByTimestamp[subMeta.timestamp] = child
                 }
+            }
+
+            // File owners (FILE/COMMENT).
+            val fileOwnersByTimestamp = mutableMapOf<String, Int>() // ts -> count
+            children.forEach { file ->
+                if (!file.isFile) return@forEach
+                val meta = FileMetadata.fromFile(file) ?: return@forEach
+                if (meta.role == EntryRole.FILE || meta.role == EntryRole.COMMENT) {
+                    fileOwnersByTimestamp.merge(meta.timestamp, 1) { a, b -> a + b }
+                }
+            }
+
+            // Emit FILE/COMMENT owners with their paired sidecar.
+            children.forEach { file ->
+                if (!file.isFile) return@forEach
+                val meta = FileMetadata.fromFile(file) ?: return@forEach
+                if (meta.role != EntryRole.FILE && meta.role != EntryRole.COMMENT) return@forEach
+
+                val sidecar = sidecarIfUnambiguous(
+                    timestamp = meta.timestamp,
+                    sidecarsByTimestamp = sidecarsByTimestamp,
+                    fileOwnersByTimestamp = fileOwnersByTimestamp,
+                    groupSubDirsByTimestamp = groupSubDirsByTimestamp,
+                )
+                entries.add(
+                    MindDumpEntry(
+                        file = file,
+                        type = meta.entryType,
+                        space = space,
+                        monthFolder = monthFolder,
+                        timestamp = meta.timestamp,
+                        role = meta.role,
+                        targetTimestamp = null, // derived during reconciliation
+                        groupPath = groupPath,
+                        isPinned = meta.isPinned,
+                        todoState = meta.todoState,
+                        tags = sidecar?.parsed?.tags ?: emptyList(),
+                        events = sidecar?.parsed?.events ?: emptyList(),
+                        metaEncrypted = sidecar?.encrypted ?: false,
+                    ),
+                )
+            }
+
+            // Emit GROUP owners (the directories themselves) with their paired
+            // sidecar, then recurse into them.
+            groupSubDirsByTimestamp.forEach { (ts, subDir) ->
+                val sidecar = sidecarIfUnambiguous(
+                    timestamp = ts,
+                    sidecarsByTimestamp = sidecarsByTimestamp,
+                    fileOwnersByTimestamp = fileOwnersByTimestamp,
+                    groupSubDirsByTimestamp = groupSubDirsByTimestamp,
+                )
+                entries.add(
+                    MindDumpEntry(
+                        file = subDir,
+                        type = EntryType.FILE, // groups have no media type
+                        space = space,
+                        monthFolder = monthFolder,
+                        timestamp = ts,
+                        role = EntryRole.GROUP,
+                        targetTimestamp = null,
+                        groupPath = groupPath,
+                        isPinned = false, // derived below from the dir metadata
+                        todoState = TodoState.NONE,
+                        tags = sidecar?.parsed?.tags ?: emptyList(),
+                        events = sidecar?.parsed?.events ?: emptyList(),
+                        metaEncrypted = sidecar?.encrypted ?: false,
+                    ).let {
+                        val dirMeta = FileMetadata.fromFile(subDir)
+                        it.copy(isPinned = dirMeta?.isPinned ?: false, todoState = dirMeta?.todoState ?: TodoState.NONE)
+                    },
+                )
+                scanDirectory(subDir, monthFolder, subDir.absolutePath)
+            }
         }
 
         spaceDir
             .listFiles()
-            ?.filter { it.isDirectory }
+            ?.filter { it.isDirectory && it.name != TRASH_DIR_NAME }
             ?.forEach { monthDir ->
                 val monthFolder = monthDir.name // YYYY-MM
                 scanDirectory(monthDir, monthFolder, null)
@@ -458,6 +552,56 @@ class FileStorageEngine(
         // entries above all real dates, and within each block the timestamp gives
         // newest-first order. Stable across edits — pinning, not editing, reorders.
         return entries.sortedByDescending { it.file.name }
+    }
+
+    /**
+     * A parsed sidecar: its decoded [EntryMeta] when readable (Public), or a flag
+     * noting it exists but is encrypted (Private, lazy).
+     */
+    private data class SidecarPayload(
+        val parsed: EntryMeta?,
+        val encrypted: Boolean,
+    )
+
+    /**
+     * Read a sidecar file. Public sidecars (`.yaml`) are parsed immediately.
+     * Private encrypted sidecars (`.yaml.enc`) are NOT decrypted here — the
+     * owner is marked encrypted so tags/events stay empty until unlock.
+     */
+    private fun readSidecar(file: File, isEncrypted: Boolean): SidecarPayload =
+        if (isEncrypted) {
+            SidecarPayload(parsed = null, encrypted = true)
+        } else {
+            val text = runCatching { file.readText() }.getOrElse {
+                Timber.w(it, "Cannot read sidecar %s", file.name)
+                return SidecarPayload(parsed = EntryMeta.EMPTY, encrypted = false)
+            }
+            SidecarPayload(parsed = MetaYamlCodec.decode(text), encrypted = false)
+        }
+
+    /**
+     * Return the sidecar for [timestamp] ONLY when the owner is unambiguous: a
+     * sidecar is orphaned if the timestamp has more than one file owner OR a
+     * group owner AND a file owner at the same timestamp, so we drop it rather
+     * than guess. [groupSubDirsByTimestamp] is the set of group owners seen in
+     * the same directory; we only pair a sidecar when exactly one owner total
+     * claims that timestamp.
+     */
+    private fun sidecarIfUnambiguous(
+        timestamp: String,
+        sidecarsByTimestamp: Map<String, SidecarPayload>,
+        fileOwnersByTimestamp: Map<String, Int>,
+        groupSubDirsByTimestamp: Map<String, File>,
+    ): SidecarPayload? {
+        val payload = sidecarsByTimestamp[timestamp] ?: return null
+        val fileOwnerCount = fileOwnersByTimestamp[timestamp] ?: 0
+        val hasGroupOwner = timestamp in groupSubDirsByTimestamp
+        val ownerCount = fileOwnerCount + (if (hasGroupOwner) 1 else 0)
+        if (ownerCount != 1) {
+            // Ambiguous or orphaned: refuse to pair.
+            return null
+        }
+        return payload
     }
 
     /**

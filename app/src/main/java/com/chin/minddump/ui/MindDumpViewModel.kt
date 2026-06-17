@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -132,6 +133,15 @@ data class MindDumpUiState(
     // One-shot action staged by a launcher shortcut (long-press app icon), consumed
     // by the UI to fire the matching capture/navigation entry point.
     val pendingShortcutAction: ShortcutAction? = null,
+    // Tag editor sheet: the entry whose tags are being edited, plus autocomplete hints.
+    val tagEditorFor: MindDumpEntry? = null,
+    val tagSuggestions: List<String> = emptyList(),
+    // Active tag filter on the feed; null = no filter.
+    val tagFilter: String? = null,
+    // Event date/time picker: the entry an event is being scheduled on.
+    val eventEditorFor: MindDumpEntry? = null,
+    // One-shot: request runtime POST_NOTIFICATIONS permission (consumed by UI).
+    val requestNotificationPermission: Boolean = false,
 )
 
 /**
@@ -170,25 +180,37 @@ class MindDumpViewModel
                 initialValue = ThemePreferences(),
             )
 
-        // Track current space and search query as flows
+        // Track current space, search query, and tag filter as flows
         private val currentSpaceFlow = MutableStateFlow(Space.PUBLIC)
         private val searchQueryFlow = MutableStateFlow("")
+        private val tagFilterFlow = MutableStateFlow<String?>(null)
 
-        // Observe entries: switches between all entries and search results
+        // Observe entries: switches between all entries and search results, then
+        // narrows by the active tag filter (tags ride on each entry from the index).
         @OptIn(ExperimentalCoroutinesApi::class)
         val entriesFlow: StateFlow<List<MindDumpEntry>> =
-            combine(currentSpaceFlow, searchQueryFlow) { space, query -> space to query }
-                .flatMapLatest { (space, query) ->
-                    if (query.isBlank()) {
-                        repository.getEntries(space)
-                    } else {
-                        repository.searchEntries(space, query)
+            combine(currentSpaceFlow, searchQueryFlow, tagFilterFlow) { space, query, tag ->
+                Triple(space, query, tag)
+            }.flatMapLatest { (space, query, tag) ->
+                val source = if (query.isBlank()) {
+                    repository.getEntries(space)
+                } else {
+                    repository.searchEntries(space, query)
+                }
+                if (tag.isNullOrBlank()) {
+                    source
+                } else {
+                    source.map { list ->
+                        list.filter { entry ->
+                            entry.tags.any { t -> t.equals(tag, ignoreCase = true) }
+                        }
                     }
-                }.stateIn(
-                    scope = viewModelScope,
-                    started = SharingStarted.WhileSubscribed(5000),
-                    initialValue = emptyList(),
-                )
+                }
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = emptyList(),
+            )
 
         init {
             checkStoragePermission()
@@ -211,6 +233,8 @@ class MindDumpViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 repository.reconcileWithDisk(Space.PUBLIC)
                 repository.reconcileWithDisk(Space.PRIVATE)
+                // Re-register Public alarms after rebuild (Private events wait for unlock).
+                runCatching { repository.registerAllPublicEvents() }
             }
         }
 
@@ -260,6 +284,11 @@ class MindDumpViewModel
             if (valid) {
                 _uiState.update { it.copy(showPasswordInput = false) }
                 applySpaceSwitch(Space.PRIVATE)
+                // Decrypt Private sidecars and register future events (no retro-fire).
+                viewModelScope.launch(Dispatchers.IO) {
+                    runCatching { repository.onPrivateUnlocked() }
+                    refreshEntries()
+                }
             }
             return valid
         }
@@ -341,11 +370,14 @@ class MindDumpViewModel
 
         private fun applySpaceSwitch(newSpace: Space) {
             currentSpaceFlow.value = newSpace
+            // A tag filter is space-scoped; clear it on switch to avoid stale filters.
+            tagFilterFlow.value = null
             _uiState.update {
                 it.copy(
                     currentSpace = newSpace,
                     isDarkTheme = newSpace == Space.PRIVATE,
                     pendingSpaceSwitch = false,
+                    tagFilter = null,
                 )
             }
         }
@@ -608,6 +640,83 @@ class MindDumpViewModel
             _uiState.update { it.copy(selectedEntryForAction = null) }
         }
 
+        // ── Tags ──
+
+        /** Open the tag editor for [entry], preloading autocomplete suggestions. */
+        fun openTagEditor(entry: MindDumpEntry) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val suggestions = repository.distinctTags(entry.space)
+                _uiState.update { it.copy(tagEditorFor = entry, tagSuggestions = suggestions) }
+            }
+        }
+
+        fun closeTagEditor() {
+            _uiState.update { it.copy(tagEditorFor = null, tagSuggestions = emptyList()) }
+        }
+
+        fun addEntryTag(entry: MindDumpEntry, tag: String) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val updated = repository.addTag(entry, tag)
+                _uiState.update {
+                    it.copy(
+                        tagEditorFor = updated,
+                        selectedEntryForAction = it.selectedEntryForAction?.let { sel ->
+                            if (sel.file == entry.file) updated else sel
+                        },
+                    )
+                }
+                refreshEntries()
+            }
+        }
+
+        fun removeEntryTag(entry: MindDumpEntry, tag: String) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val updated = repository.removeTag(entry, tag)
+                _uiState.update { it.copy(tagEditorFor = updated) }
+                refreshEntries()
+            }
+        }
+
+        /** Apply (or clear with null) a tag filter on the current space feed. */
+        fun setTagFilter(tag: String?) {
+            tagFilterFlow.value = tag
+            _uiState.update { it.copy(tagFilter = tag) }
+        }
+
+        // ── Scheduled events ──
+
+        fun openEventEditor(entry: MindDumpEntry) {
+            // First-time: prompt for notification permission before scheduling.
+            _uiState.update { it.copy(eventEditorFor = entry, requestNotificationPermission = true) }
+        }
+
+        fun closeEventEditor() {
+            _uiState.update { it.copy(eventEditorFor = null) }
+        }
+
+        fun consumeNotificationPermissionRequest() {
+            _uiState.update { it.copy(requestNotificationPermission = false) }
+        }
+
+        fun addEntryEvent(entry: MindDumpEntry, dateTime: java.time.LocalDateTime) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val event = com.chin.minddump.storage.EntryEvent(
+                    due = dateTime,
+                    state = com.chin.minddump.storage.EventState.PENDING,
+                    trigger = com.chin.minddump.storage.EventTrigger.ONCE,
+                )
+                val updated = repository.addEvent(entry, event)
+                _uiState.update {
+                    it.copy(
+                        selectedEntryForAction = it.selectedEntryForAction?.let { sel ->
+                            if (sel.file == entry.file) updated else sel
+                        },
+                    )
+                }
+                refreshEntries()
+            }
+        }
+
         /**
          * Resolve [entries] to a shareable payload and expose it for the UI to
          * hand to the system Share sheet. Surfaces [ShareResult.Locked] when an
@@ -757,6 +866,32 @@ class MindDumpViewModel
         fun openEntryForEdit(file: File) {
             _uiState.update { it.copy(entryToEdit = file) }
         }
+
+        /**
+         * Deep link from a fired-event notification: switch to the entry's space
+         * (requesting Private unlock if needed), then open the file for editing.
+         */
+        fun openEntryFromDeepLink(spaceName: String?, ownerPath: String) {
+            val targetSpace = spaceName
+                ?.let { runCatching { Space.valueOf(it) }.getOrNull() }
+                ?: inferSpaceFromPath(ownerPath)
+            if (targetSpace == Space.PRIVATE && !repository.isSessionUnlocked()) {
+                // Surface the Private gate; the user re-taps the notification after unlock.
+                _uiState.update { it.copy(showPasswordInput = true) }
+                return
+            }
+            if (targetSpace != null && targetSpace != _uiState.value.currentSpace) {
+                applySpaceSwitch(targetSpace)
+            }
+            openEntryForEdit(File(ownerPath))
+        }
+
+        private fun inferSpaceFromPath(path: String): Space? =
+            when {
+                path.contains("/Private/") -> Space.PRIVATE
+                path.contains("/Public/") -> Space.PUBLIC
+                else -> null
+            }
 
         /** Leave the fullscreen editor edit mode. */
         fun clearEntryToEdit() {

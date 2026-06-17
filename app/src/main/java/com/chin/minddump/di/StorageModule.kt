@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room3.Room
 import com.chin.minddump.data.MindDumpDatabase
 import com.chin.minddump.data.MindDumpRepository
+import com.chin.minddump.notification.EventScheduler
 import com.chin.minddump.security.CryptoEngine
 import com.chin.minddump.security.PasswordStore
 import com.chin.minddump.storage.FileStorageEngine
@@ -55,6 +56,12 @@ object StorageModule {
 
     @Provides
     @Singleton
+    fun provideEventScheduler(
+        @ApplicationContext context: Context,
+    ): EventScheduler = EventScheduler(context)
+
+    @Provides
+    @Singleton
     fun providePasswordStore(
         @ApplicationContext context: Context,
     ): PasswordStore = PasswordStore(context)
@@ -66,5 +73,12 @@ object StorageModule {
         storageEngine: FileStorageEngine,
         cryptoEngine: CryptoEngine,
         passwordStore: PasswordStore,
-    ): MindDumpRepository = MindDumpRepository(database, storageEngine, cryptoEngine, passwordStore)
+        eventScheduler: EventScheduler,
+    ): MindDumpRepository = MindDumpRepository(
+        database,
+        storageEngine,
+        cryptoEngine,
+        passwordStore,
+        eventScheduler,
+    )
 }

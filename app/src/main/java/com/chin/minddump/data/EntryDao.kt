@@ -57,6 +57,25 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE space = :space AND role = :role ORDER BY lastModified DESC")
     fun getByRole(space: Space, role: EntryRole): Flow<List<EntryEntity>>
 
+    @Query("SELECT * FROM entries WHERE filePath = :filePath LIMIT 1")
+    suspend fun findByPath(filePath: String): EntryEntity?
+
+    /**
+     * Filter entries by tag. The `tags` column joins tags with a U+0001 separator,
+     * so [pattern] should wrap the tag with that separator on both sides plus GLOB
+     * wildcards, e.g. `*<SEP>tag<SEP>*`. A single-tag row has no surrounding seps,
+     * so the caller must also accept exact-match; this query uses a pattern that
+     * the repository constructs to cover edge cases.
+     */
+    @Query(
+        """
+        SELECT * FROM entries
+        WHERE space = :space AND tags GLOB :pattern
+        ORDER BY lastModified DESC
+        """,
+    )
+    fun getByTag(space: Space, pattern: String): Flow<List<EntryEntity>>
+
     @Query("SELECT * FROM entries WHERE targetTimestamp = :targetTs AND space = :space ORDER BY lastModified DESC")
     fun getCommentsFor(space: Space, targetTs: String): Flow<List<EntryEntity>>
 

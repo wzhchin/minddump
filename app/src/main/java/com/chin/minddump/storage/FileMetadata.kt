@@ -9,13 +9,19 @@ import java.io.File
  *   File:    [9999-]{yymm-dd-HHMMSS}-[STATUS-]-f[-{originalName}].{extension}[.enc]
  *   Comment: {yymm-dd-HHMMSS}-n-{yymm-dd-HHMMSS}.md[.enc]
  *   Group:   [9999-]{yymm-dd-HHMMSS}-[STATUS-]-g[-{name}]/   (directory)
+ *   Meta:    {yymm-dd-HHMMSS}-m.yaml[.enc]   (sidecar paired by timestamp)
  *
  * Where `9999-` is an optional pin prefix (a sort sentinel) and `STATUS` is an
- * optional todo-status token (`TODO|DOING|WAIT|DONE|CANCEL`). Comments never
- * carry a pin prefix or a status. Timestamp format: `\d{4}-\d{2}-\d{6}`
+ * optional todo-status token (`TODO|DOING|WAIT|DONE|CANCEL`). Comments and meta
+ * never carry a pin prefix or a status. Timestamp format: `\d{4}-\d{2}-\d{6}`
  * (e.g., 2506-13-143022). The three free-form positions never collide: the
  * status token is an uppercase word sitting before the lowercase role char,
  * while `{originalName}` sits after the role char.
+ *
+ * The `m` (META) role is a sidecar that carries an owner entry's structured
+ * metadata (tags, scheduled events). It is paired to its owner by **timestamp
+ * alignment**: it shares the owner's timestamp and lives as a sibling file in
+ * the same directory. It never has a pin, status, or original-name component.
  */
 data class FileMetadata(
     val timestamp: String, // yymm-dd-HHMMSS (e.g., 2506-13-143022)
@@ -39,7 +45,7 @@ data class FileMetadata(
         // Group 1: pin prefix (without dash), 2: timestamp, 3: status token,
         // 4: role char, 5: extra (originalName or comment targetTs), 6: ext, 7: enc.
         private val FILE_PATTERN = Regex(
-            """^(9999-)?(\d{4}-\d{2}-\d{6})-(?:($STATUS)-)?([fng])(?:-(.+?))?\.(\w+)(\.enc)?$""",
+            """^(9999-)?(\d{4}-\d{2}-\d{6})-(?:($STATUS)-)?([fngm])(?:-(.+?))?\.(\w+)(\.enc)?$""",
         )
 
         // Directory form: no extension; status + name both optional.
@@ -79,6 +85,7 @@ data class FileMetadata(
                 "f" -> EntryRole.FILE
                 "n" -> EntryRole.COMMENT
                 "g" -> EntryRole.GROUP
+                "m" -> EntryRole.META
                 else -> return null
             }
 
@@ -123,7 +130,7 @@ data class FileMetadata(
 
 /**
  * Role identifiers in MindDump filenames.
- * Used to distinguish files, comments, and group directories.
+ * Used to distinguish files, comments, group directories, and metadata sidecars.
  */
 enum class EntryRole(
     val code: String
@@ -131,4 +138,5 @@ enum class EntryRole(
     FILE("f"),
     COMMENT("n"),
     GROUP("g"),
+    META("m"),
 }

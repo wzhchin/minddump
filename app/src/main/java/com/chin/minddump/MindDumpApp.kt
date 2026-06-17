@@ -5,6 +5,7 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.video.VideoFrameDecoder
+import com.chin.minddump.notification.EventChannels
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 
@@ -17,6 +18,8 @@ class MindDumpApp :
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
+        // Create notification channels up front so reminders/digest posts never fail.
+        EventChannels.ensureCreated(this)
         Timber.d("MindDump initialized")
     }
 

@@ -1,9 +1,11 @@
 package com.chin.minddump.ui
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.widget.Toast
@@ -19,18 +21,22 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -80,6 +86,8 @@ import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.RebuildDatabaseDialog
 import com.chin.minddump.ui.components.SettingsDialog
+import com.chin.minddump.ui.components.EventDateTimePicker
+import com.chin.minddump.ui.components.TagEditorSheet
 import com.chin.minddump.ui.components.TrashScreen
 import com.chin.minddump.ui.components.SpaceSelectionDialog
 import com.chin.minddump.ui.theme.AppThemeMode
@@ -204,6 +212,22 @@ fun MainScreen(
             viewModel.setCameraPermissionGranted(granted)
             if (granted) onNavigateToCamera()
         }
+
+    // Request POST_NOTIFICATIONS the first time a user schedules an event (Android 13+).
+    val notificationPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            viewModel.consumeNotificationPermissionRequest()
+        }
+
+    LaunchedEffect(uiState.requestNotificationPermission) {
+        if (uiState.requestNotificationPermission) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                viewModel.consumeNotificationPermissionRequest()
+            }
+        }
+    }
 
     val fileImportLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -428,6 +452,28 @@ fun MainScreen(
                 Column(
                     modifier = Modifier.fillMaxSize().padding(paddingValues),
                 ) {
+                    // Active tag filter chip (shown only when filtering the feed).
+                    uiState.tagFilter?.let { tag ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.FilterChip(
+                                selected = true,
+                                onClick = { viewModel.setTagFilter(null) },
+                                label = { Text("#$tag") },
+                                trailingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = stringResource(R.string.cancel),
+                                        modifier = Modifier.size(InputChipDefaults.IconSize),
+                                    )
+                                },
+                            )
+                        }
+                    }
                     // Entry list
                     Box(modifier = Modifier.fillMaxSize()) {
                         EntryList(
@@ -503,7 +549,39 @@ fun MainScreen(
                     onShare = {
                         viewModel.shareEntries(listOf(entry))
                     },
+                    onEditTags = {
+                        viewModel.openTagEditor(entry)
+                    },
+                    onAddEvent = {
+                        viewModel.openEventEditor(entry)
+                    },
                     onDismiss = { viewModel.clearEntryAction() },
+                )
+            }
+
+            // Event date/time picker
+            uiState.eventEditorFor?.let { entry ->
+                EventDateTimePicker(
+                    onConfirm = { dateTime ->
+                        viewModel.addEntryEvent(entry, dateTime)
+                        viewModel.closeEventEditor()
+                    },
+                    onDismiss = { viewModel.closeEventEditor() },
+                )
+            }
+
+            // Tag editor sheet
+            uiState.tagEditorFor?.let { entry ->
+                TagEditorSheet(
+                    tags = entry.tags,
+                    suggestions = uiState.tagSuggestions,
+                    onAdd = { tag ->
+                        viewModel.addEntryTag(entry, tag)
+                    },
+                    onRemove = { tag ->
+                        viewModel.removeEntryTag(entry, tag)
+                    },
+                    onDismiss = { viewModel.closeTagEditor() },
                 )
             }
 

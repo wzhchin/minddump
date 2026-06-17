@@ -3,6 +3,7 @@ package com.chin.minddump.ui.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,27 +17,38 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberBottomSheetState
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +94,8 @@ fun EntryActionDrawer(
     onSetStatus: ((TodoState) -> Unit)? = null,
     onAddComment: ((String) -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    onEditTags: (() -> Unit)? = null,
+    onAddEvent: (() -> Unit)? = null,
 ) {
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
@@ -155,6 +169,53 @@ fun EntryActionDrawer(
                     onClick = {
                         haptics.perform(HapticPattern.Tick)
                         showCommentDialog = true
+                    },
+                )
+            }
+            // Tags — open the tag editor sheet.
+            if (onEditTags != null) {
+                ActionItem(
+                    icon = Icons.Filled.Label,
+                    label = stringResource(R.string.tag_add),
+                    trailing = {
+                        if (entry.tags.isNotEmpty()) {
+                            Text(
+                                text = entry.tags.joinToString(" ") { "#$it" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onEditTags()
+                        onDismiss()
+                    },
+                )
+            }
+            // Scheduled event — open the date/time picker.
+            if (onAddEvent != null) {
+                ActionItem(
+                    icon = Icons.Filled.Notifications,
+                    label = stringResource(R.string.event_add),
+                    trailing = {
+                        val pending = entry.events.any { it.state == com.chin.minddump.storage.EventState.PENDING }
+                        if (entry.events.isNotEmpty()) {
+                            Text(
+                                text = if (pending) {
+                                    stringResource(R.string.event_pending)
+                                } else {
+                                    stringResource(R.string.event_fired)
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onAddEvent()
+                        onDismiss()
                     },
                 )
             }
@@ -753,5 +814,194 @@ fun StatusPickerSheet(
                 )
             }
         }
+    }
+}
+
+// ──────────────────────────────────────────────
+// Tag Editor Sheet
+// ──────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TagEditorSheet(
+    tags: List<String>,
+    suggestions: List<String>,
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shapes = LocalExpressiveShapes.current
+    var input by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+
+    val matchingSuggestions = remember(input, suggestions) {
+        if (input.isBlank()) suggestions
+        else suggestions
+            .filter { it.contains(input.trim(), ignoreCase = true) }
+            .filterNot { existing -> tags.any { it.equals(existing, ignoreCase = true) } }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = shapes.cardLarge as RoundedCornerShape,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.tag_add),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
+            )
+
+            // Existing tags as removable chips.
+            if (tags.isNotEmpty()) {
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    tags.forEach { tag ->
+                        InputChip(
+                            label = { Text("#$tag") },
+                            selected = false,
+                            onClick = { onRemove(tag) },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(InputChipDefaults.IconSize),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = input,
+                onValueChange = {
+                    input = it
+                    error = false
+                },
+                label = { Text(stringResource(R.string.tag_add)) },
+                isError = error,
+                supportingText = if (error) {
+                    { Text(stringResource(R.string.tag_invalid)) }
+                } else {
+                    null
+                },
+                singleLine = true,
+                trailingIcon = {
+                    TextButton(
+                        onClick = {
+                            val candidate = input.trim()
+                            if (candidate.isEmpty()) return@TextButton
+                            if (com.chin.minddump.storage.TagValidator
+                                    .normalize(candidate) == null) {
+                                error = true
+                            } else {
+                                onAdd(candidate)
+                                input = ""
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.confirm))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Autocomplete suggestions.
+            if (matchingSuggestions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.tag_filter_label),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp, bottom = 8.dp),
+                )
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    matchingSuggestions.take(20).forEach { suggestion ->
+                        AssistChip(
+                            onClick = { onAdd(suggestion) },
+                            label = { Text("#$suggestion") },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
+// Event Date/Time Picker
+// ──────────────────────────────────────────────
+
+/**
+ * Two-step picker: choose a date, then a time. Invokes [onConfirm] with the
+ * combined local date-time, or [onDismiss]. Returns null if the chosen time is
+ * in the past (caller should warn).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EventDateTimePicker(
+    onConfirm: (java.time.LocalDateTime) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shapes = LocalExpressiveShapes.current
+    val datePickerState = rememberDatePickerState()
+    var pickingTime by remember { mutableStateOf(false) }
+    val timePickerState = rememberTimePickerState()
+
+    if (!pickingTime) {
+        DatePickerDialog(
+            onDismissRequest = onDismiss,
+            shape = shapes.cardMedium,
+            confirmButton = {
+                TextButton(
+                    enabled = datePickerState.selectedDateMillis != null,
+                    onClick = { pickingTime = true },
+                ) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            shape = shapes.cardMedium,
+            title = { Text(stringResource(R.string.event_due_at)) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val dateMs = datePickerState.selectedDateMillis ?: return@TextButton
+                    val instant = java.time.Instant.ofEpochMilli(dateMs)
+                    val date = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    val time = java.time.LocalTime.of(timePickerState.hour, timePickerState.minute)
+                    onConfirm(java.time.LocalDateTime.of(date, time))
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
 }

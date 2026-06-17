@@ -15,6 +15,11 @@
     <!-- Biometric -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!-- Scheduled events: exact alarms + notifications + boot re-registration -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:name=".MindDumpApp"
         android:allowBackup="true"
@@ -69,7 +74,27 @@
                 <action android:name="com.chin.minddump.action.OPEN_PRIVATE" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- Deep link from an event-notification tap: open the owning entry. -->
+            <intent-filter>
+                <action android:name="com.chin.minddump.action.OPEN_ENTRY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+
+        <!-- Fires a notification when a scheduled event's alarm triggers.
+             @AndroidEntryPoint receivers are referenced by their generated Hilt_ class. -->
+        <receiver
+            android:name=".notification.Hilt_EventAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Re-registers all pending events after a reboot (alarms are cleared on reboot). -->
+        <receiver
+            android:name=".notification.Hilt_BootCompletedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

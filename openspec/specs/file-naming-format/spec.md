@@ -3,7 +3,7 @@
 File naming convention, monthly directory layout, type detection by extension, and FileMetadata parsing for the new MindDump file format.
 ## Requirements
 ### Requirement: File naming format
-The system SHALL use `[9999-][yymm-dd-HHMMSS]-[STATUS]-f[-{originalName}].{extension}[.enc]` for user-managed files, where the `9999-` prefix is an optional pin sentinel and `[STATUS]` is an optional todo-status token (`TODO`, `DOING`, `WAIT`, `DONE`, `CANCEL`) followed by `-`. Timestamp format is `yymm-dd-HHMMSS` (e.g., `2506-13-143022`). When neither pin nor status is present, the name collapses to the legacy `{ts}-f[-{name}].{ext}[.enc]` form. Comments use `{ts}-n-{ts}.md[.enc]` and never carry a pin prefix or status token.
+The system SHALL use `[9999-][yymm-dd-HHMMSS]-[STATUS]-f[-{originalName}].{extension}[.enc]` for user-managed files, where the `9999-` prefix is an optional pin sentinel and `[STATUS]` is an optional todo-status token (`TODO`, `DOING`, `WAIT`, `DONE`, `CANCEL`) followed by `-`. Timestamp format is `yymm-dd-HHMMSS` (e.g., `2506-13-143022`). When neither pin nor status is present, the name collapses to the legacy `{ts}-f[-{name}].{ext}[.enc]` form. Comments use `{ts}-n-{ts}.md[.enc]` and never carry a pin prefix or status token. Metadata sidecars use `{ts}-m.yaml[.enc]` and never carry a pin prefix or status token; the sidecar's `m` role pairs it to an owner entry that shares its timestamp.
 
 #### Scenario: Text entry
 - **WHEN** a text entry is saved
@@ -40,6 +40,14 @@ The system SHALL use `[9999-][yymm-dd-HHMMSS]-[STATUS]-f[-{originalName}].{exten
 #### Scenario: Comment keeps its own format
 - **WHEN** a comment is saved against an entry
 - **THEN** the comment is named `{targetTs}-n-{nowTs}.md` with no pin prefix and no status token, regardless of the parent's pin/status
+
+#### Scenario: Metadata sidecar name in Public space
+- **WHEN** an owner entry gains tags or events in Public space
+- **THEN** its sidecar is named `{ts}-m.yaml` (e.g., `2506-13-143022-m.yaml`), with no pin prefix and no status token
+
+#### Scenario: Metadata sidecar name in Private space
+- **WHEN** an owner entry gains tags or events in Private space
+- **THEN** its sidecar is named `{ts}-m.yaml.enc` (e.g., `2506-13-143022-m.yaml.enc`)
 
 ### Requirement: Monthly directory grouping
 The system SHALL organize files under `{workDir}/{Public|Private}/YYYY-MM/` instead of daily folders. For example, entries from June 2025 go into `2025-06/`.
