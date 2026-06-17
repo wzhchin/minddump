@@ -31,4 +31,12 @@ rebuilt from disk. Schema changes need a Room migration strategy in the tasks.
 - A single-line bug fix with no behavior contract change                                                               
 - Updating an existing memory or doc that isn't a product spec                                                         
                                                                                                                     
-When in doubt, propose first.  
+When in doubt, propose first.
+
+## Roadmap
+
+[ROADMAP.md](ROADMAP.md) lists planned-but-unbuilt features (input, organization,
+recall, safety-net, security). It is the upper index above OpenSpec: it decides
+*what* to build next; each entry still goes through the OpenSpec flow above when
+started. Check it before proposing a new feature to avoid duplicating or
+contradicting a planned item.
