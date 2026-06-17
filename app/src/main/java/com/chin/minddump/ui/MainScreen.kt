@@ -122,9 +122,11 @@ fun MainScreen(
         FileMetadata.fromFile(it)?.originalName ?: it.name
     } ?: ""
     // Direct members of the current scope: root → ungrouped entries, group →
-    // entries whose groupPath matches this dir.
-    val scopeMembers = uiState.entries.filter { entry ->
-        entry.groupPath == currentDir?.absolutePath
+    // entries whose groupPath matches this dir. Filter the ViewModel's already-
+    // grouped list (files + nested comments) by the same scope, so the list does
+    // not re-group at render time (single source of truth for comment nesting).
+    val scopeGroupedEntries = uiState.groupedEntries.filter { grouped ->
+        grouped.entry.groupPath == currentDir?.absolutePath
     }
     // Sub-group cards: month-top groups at root, child groups inside a group.
     val scopeGroups = if (isGroupScope) uiState.childGroups else uiState.groups
@@ -405,7 +407,7 @@ fun MainScreen(
                     // Entry list
                     Box(modifier = Modifier.fillMaxSize()) {
                         EntryList(
-                            entries = scopeMembers,
+                            groupedEntries = scopeGroupedEntries,
                             onEntryClick = { entry ->
                                 if (uiState.isMultiSelectMode) {
                                     viewModel.toggleEntrySelection(entry)

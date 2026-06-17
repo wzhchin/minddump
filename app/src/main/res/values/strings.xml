@@ -20,6 +20,9 @@
 
     <!-- Entry list -->
     <string name="empty_list">还没有任何记录\n点击下方输入框开始录入</string>
+    <string name="action_expand">展开</string>
+    <string name="action_collapse">收起</string>
+    <string name="content_loading">加载中…</string>
 
     <!-- Delete -->
     <string name="delete_title">删除记录</string>

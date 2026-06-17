@@ -20,6 +20,9 @@
 
     <!-- Entry list -->
     <string name="empty_list">No entries yet.\nTap the input bar below to get started.</string>
+    <string name="action_expand">Expand</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="content_loading">Loading…</string>
 
     <!-- Delete -->
     <string name="delete_title">Delete entry</string>

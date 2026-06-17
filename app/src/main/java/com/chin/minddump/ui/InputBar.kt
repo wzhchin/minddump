@@ -3,6 +3,7 @@ package com.chin.minddump.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -40,8 +41,6 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -50,8 +49,10 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -138,24 +139,30 @@ fun InputBar(
         label = "record_content_color",
     )
 
-    // Send button scale bounce on text change
-    var sendScale by remember { mutableFloatStateOf(1f) }
-    val sendScaleAnimated by animateFloatAsState(
-        targetValue = sendScale,
-        animationSpec = spring(dampingRatio = 0.4f, stiffness = 500f),
-        label = "send_bounce",
+    // Send button: a subtle lift while there is text, plus a one-shot "pop"
+    // bounce on submit. Both read state into animation targets — no state is
+    // written in the composition path (the previous version assigned sendScale
+    // directly in the body, an anti-pattern).
+    val hasText = inputText.isNotBlank()
+    val sendLift by animateFloatAsState(
+        targetValue = if (hasText) 1.04f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 600f),
+        label = "send_lift",
     )
-    // Trigger bounce when text changes
-    if (inputText.isNotBlank()) {
-        sendScale = 1.05f
-    } else {
-        sendScale = 1f
+    var sendPopTrigger by remember { mutableFloatStateOf(0f) }
+    val sendPop = remember { Animatable(1f) }
+    LaunchedEffect(sendPopTrigger) {
+        if (sendPopTrigger > 0f) {
+            sendPop.snapTo(1.18f)
+            sendPop.animateTo(1f, spring(dampingRatio = 0.35f, stiffness = 520f))
+        }
     }
 
-    // Space switch Y rotation
-    var spaceRotation by remember { mutableFloatStateOf(0f) }
+    // Space switch Y rotation. Bounded to 0/180 so repeated toggles never let
+    // the value accumulate without limit.
+    var spaceRotated by remember { mutableStateOf(false) }
     val spaceRotationAnimated by animateFloatAsState(
-        targetValue = spaceRotation,
+        targetValue = if (spaceRotated) 180f else 0f,
         animationSpec = tween(animDuration.medium, easing = curve.standard),
         label = "space_rotation",
     )
@@ -278,7 +285,7 @@ fun InputBar(
                     SpaceSwitchButton(
                         currentSpace = currentSpace,
                         onClick = {
-                            spaceRotation += 180f
+                            spaceRotated = !spaceRotated
                             onSpaceToggle()
                         },
                         rotationY = spaceRotationAnimated,
@@ -334,16 +341,18 @@ fun InputBar(
                     }
                 }
 
-                // Send button with bounce animation
+                // Send button: lift while text is present, pop on submit.
                 FilledIconButton(
                     onClick = {
                         haptics.perform(HapticPattern.Send)
+                        sendPopTrigger += 1f
                         onSubmit()
                     },
                     enabled = inputText.isNotBlank(),
                     modifier = Modifier.graphicsLayer {
-                        scaleX = sendScaleAnimated
-                        scaleY = sendScaleAnimated
+                        val scale = sendLift * sendPop.value
+                        scaleX = scale
+                        scaleY = scale
                     },
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -391,16 +400,20 @@ private fun RecordingIndicatorChip() {
         label = "pulse_alpha",
     )
 
-    FilterChip(
-        selected = true,
-        onClick = {},
-        label = {
-            Text(
-                stringResource(R.string.recording),
-                style = MaterialTheme.typography.labelSmall,
-            )
-        },
-        leadingIcon = {
+    // A purely decorative indicator (status badge), NOT an interactive chip: it
+    // uses a Surface + Row so it has no click/toggle semantics, rather than the
+    // previous FilterChip(selected = true, onClick = {}) which read as an
+    // interactive control to accessibility services.
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Box(
                 modifier = Modifier
                     .size(8.dp * pulseScale)
@@ -408,11 +421,10 @@ private fun RecordingIndicatorChip() {
                     .graphicsLayer { alpha = pulseAlpha }
                     .background(MaterialTheme.colorScheme.error),
             )
-        },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer,
-            selectedLeadingIconColor = MaterialTheme.colorScheme.error,
-        ),
-    )
+            Text(
+                stringResource(R.string.recording),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
 }

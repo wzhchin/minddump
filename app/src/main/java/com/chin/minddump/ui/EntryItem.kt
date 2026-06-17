@@ -1,13 +1,12 @@
 package com.chin.minddump.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,7 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,7 +110,7 @@ sealed interface FeedItem {
 
 @Composable
 fun EntryList(
-    entries: List<MindDumpEntry>,
+    groupedEntries: List<GroupedEntry>,
     onEntryClick: (MindDumpEntry) -> Unit,
     onEntryLongClick: (MindDumpEntry) -> Unit,
     modifier: Modifier = Modifier,
@@ -119,12 +120,12 @@ fun EntryList(
     onGroupClick: (File) -> Unit = {},
     onGroupLongClick: (File) -> Unit = {},
 ) {
-    // The caller pre-scopes [entries] to the current view: at the root feed these
+    // The caller pre-scopes [groupedEntries] to the current view (the ViewModel's
+    // already-grouped list, filtered to the current scope): at the root feed these
     // are the ungrouped entries (groupPath == null); inside a group they are that
     // group's direct members (groupPath == this dir). Either way every passed
     // entry is rendered as a loose item. Sub-group cards render alongside.
-    val looseGrouped = groupEntriesForRender(entries)
-        .map { FeedItem.Loose(it) }
+    val looseGrouped = groupedEntries.map { FeedItem.Loose(it) }
     val groupCards = groups.map { FeedItem.GroupCard(it) }
 
     val displayItems = (looseGrouped + groupCards)
@@ -140,8 +141,15 @@ fun EntryList(
         return
     }
 
+    // Item animation specs (hoisted so the animateItem calls stay within line
+    // length and the specs are not re-created per item).
     val animDuration = LocalAnimationDuration.current
-    val curve = LocalMotionCurve.current.decelerate
+    val motionCurve = LocalMotionCurve.current
+    val placementSpec: FiniteAnimationSpec<IntOffset> =
+        tween(animDuration.medium, easing = motionCurve.decelerate)
+    val fadeInSpec: FiniteAnimationSpec<Float> =
+        tween(animDuration.medium, easing = motionCurve.decelerate)
+    val fadeOutSpec: FiniteAnimationSpec<Float> = tween(animDuration.short)
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -164,70 +172,37 @@ fun EntryList(
                 }
             },
         ) { item ->
-            AnimatedVisibility(
-                visible = true,
-                enter = slideInVertically(
-                    initialOffsetY = { 20 },
-                    animationSpec = tween(
-                        durationMillis = animDuration.medium,
-                        easing = curve,
+            // Idiomatic item-scoped animation: inserts/moves/removals animate
+            // fluidly without re-firing an entrance on scroll. Replaces the old
+            // per-item AnimatedVisibility(visible = true) wrapper whose exit spec
+            // was dead and whose enter re-fired as items scrolled into view.
+            when (item) {
+                is FeedItem.Loose -> GroupedEntryItem(
+                    groupedEntry = item.grouped,
+                    onClick = { onEntryClick(item.grouped.entry) },
+                    onLongClick = { onEntryLongClick(item.grouped.entry) },
+                    onCommentClick = { comment -> onEntryClick(comment) },
+                    isMultiSelectMode = isMultiSelectMode,
+                    isSelected = item.grouped.entry in selectedEntries,
+                    modifier = Modifier.animateItem(
+                        placementSpec = placementSpec,
+                        fadeInSpec = fadeInSpec,
+                        fadeOutSpec = fadeOutSpec,
                     ),
-                ) + fadeIn(
-                    animationSpec = tween(
-                        durationMillis = animDuration.medium,
-                        easing = curve,
-                    ),
-                ),
-                exit = fadeOut(
-                    animationSpec = tween(durationMillis = animDuration.short),
-                ) + shrinkVertically(
-                    animationSpec = tween(durationMillis = animDuration.short),
-                ),
-            ) {
-                when (item) {
-                    is FeedItem.Loose -> GroupedEntryItem(
-                        groupedEntry = item.grouped,
-                        onClick = { onEntryClick(item.grouped.entry) },
-                        onLongClick = { onEntryLongClick(item.grouped.entry) },
-                        onCommentClick = { comment -> onEntryClick(comment) },
-                        isMultiSelectMode = isMultiSelectMode,
-                        isSelected = item.grouped.entry in selectedEntries,
-                    )
+                )
 
-                    is FeedItem.GroupCard -> GroupSummaryCard(
-                        summary = item.summary,
-                        onClick = { onGroupClick(item.summary.groupDir) },
-                        onLongClick = { onGroupLongClick(item.summary.groupDir) },
-                    )
-                }
+                is FeedItem.GroupCard -> GroupSummaryCard(
+                    summary = item.summary,
+                    onClick = { onGroupClick(item.summary.groupDir) },
+                    onLongClick = { onGroupLongClick(item.summary.groupDir) },
+                    modifier = Modifier.animateItem(
+                        placementSpec = placementSpec,
+                        fadeOutSpec = fadeOutSpec,
+                    ),
+                )
             }
         }
     }
-}
-
-// ──────────────────────────────────────────────
-// Comment nesting helper (render-time)
-// ──────────────────────────────────────────────
-
-/**
- * Nest comments under their target file entry for rendering.
- * Mirrors the ViewModel logic so the list can group loose entries' comments.
- */
-private fun groupEntriesForRender(entries: List<MindDumpEntry>): List<GroupedEntry> {
-    val files = entries.filter { it.role == EntryRole.FILE }
-    val comments = entries.filter { it.role == EntryRole.COMMENT }
-    val result = mutableListOf<GroupedEntry>()
-    val matched = mutableSetOf<MindDumpEntry>()
-
-    for (file in files) {
-        val fileComments = comments.filter { it.targetTimestamp == file.timestamp && it !in matched }
-        matched.addAll(fileComments)
-        result.add(GroupedEntry(entry = file, comments = fileComments))
-    }
-    for (comment in comments) {
-        if (comment !in matched) result.add(GroupedEntry(entry = comment, comments = emptyList()))
-    }
-    return result
 }
 
 // ──────────────────────────────────────────────
@@ -246,6 +221,7 @@ fun GroupSummaryCard(
     summary: GroupSummary,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val haptics = rememberPremiumHaptics()
     val typeCounts = summary.memberEntries.groupingBy { it.type }.eachCount()
@@ -265,6 +241,7 @@ fun GroupSummaryCard(
             haptics.perform(HapticPattern.Buildup)
             onLongClick()
         },
+        modifier = modifier,
     ) {
         // ── Media carousel preview (omitted when the group has no photos/videos) ──
         if (mediaMembers.isNotEmpty()) {
@@ -416,20 +393,7 @@ private fun CarouselMediaTile(member: MindDumpEntry) {
             contentScale = ContentScale.Crop,
         )
         if (isVideo) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(26.dp),
-                )
-            }
+            VideoPlayOverlay()
         }
     }
 
@@ -454,6 +418,7 @@ fun GroupedEntryItem(
     onCommentClick: (MindDumpEntry) -> Unit,
     isMultiSelectMode: Boolean = false,
     isSelected: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     EntryItem(
         entry = groupedEntry.entry,
@@ -464,6 +429,7 @@ fun GroupedEntryItem(
         comments = groupedEntry.comments,
         onCommentClick = onCommentClick,
         isOrphanComment = groupedEntry.entry.role == EntryRole.COMMENT,
+        modifier = modifier,
     )
 }
 
@@ -566,14 +532,13 @@ private fun CommentPreview(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(end = 8.dp),
         )
-        val commentText by produceState(initialValue = comment.file.name, key1 = comment.file) {
+        val commentText by produceState<String?>(initialValue = null, key1 = comment.file) {
             value = withContext(Dispatchers.IO) {
-                runCatching { comment.file.readText().take(500) }
-                    .getOrDefault(comment.file.name)
+                runCatching { comment.file.readText().take(500) }.getOrNull()
             }
         }
         Text(
-            text = commentText,
+            text = commentText ?: stringResource(R.string.content_loading),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
             modifier = Modifier.weight(1f),
@@ -598,6 +563,7 @@ fun EntryItem(
     comments: List<MindDumpEntry> = emptyList(),
     onCommentClick: (MindDumpEntry) -> Unit = {},
     isOrphanComment: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val haptics = rememberPremiumHaptics()
 
@@ -612,6 +578,7 @@ fun EntryItem(
         },
         // In multi-select the whole card toggles selection on tap.
         enabled = !isMultiSelectMode,
+        modifier = modifier,
     ) {
         // Multi-select checkbox
         if (isMultiSelectMode) {
@@ -738,8 +705,10 @@ private fun EntryCardHeader(entry: MindDumpEntry, showLock: Boolean = true) {
             Spacer(modifier = Modifier.width(4.dp))
         }
 
-        // Lock icon for encrypted entries
-        if (showLock && (entry.file.name.contains("enc") || entry.file.extension == "enc")) {
+        // Lock icon for encrypted entries. Drive this from the parsed metadata
+        // property rather than a filename substring sniff — robust to renames.
+        val isEncrypted = FileMetadata.fromFile(entry.file)?.isEncrypted == true
+        if (showLock && isEncrypted) {
             Icon(
                 imageVector = Icons.Filled.Lock,
                 contentDescription = null,
@@ -772,18 +741,16 @@ private fun statusBadgeColor(state: TodoState): Color =
 
 @Composable
 private fun TextEntryContent(entry: MindDumpEntry) {
-    val textContent by produceState(initialValue = entry.file.name, key1 = entry.file) {
+    // Load lazily off the main thread. Initial value is null so we can show a
+    // localized loading placeholder instead of flashing the raw file name.
+    val textContent by produceState<String?>(initialValue = null, key1 = entry.file) {
         value = withContext(Dispatchers.IO) {
-            try {
-                entry.file.readText().take(500)
-            } catch (_: Exception) {
-                entry.file.name
-            }
+            runCatching { entry.file.readText().take(500) }
+                .getOrNull()
         }
     }
 
     var expanded by remember { mutableStateOf(false) }
-    val effectiveMaxLines = if (expanded) Int.MAX_VALUE else 3
 
     Column(
         modifier = Modifier
@@ -791,21 +758,49 @@ private fun TextEntryContent(entry: MindDumpEntry) {
             .padding(horizontal = 12.dp)
             .padding(bottom = 12.dp),
     ) {
-        Text(
-            text = textContent,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = effectiveMaxLines,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-
-        if (!expanded && textContent.length > 120) {
-            Text(
-                text = "展开",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 4.dp),
+        when (val content = textContent) {
+            null -> Text(
+                text = stringResource(R.string.content_loading),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
+
+            else -> {
+                val isLong = content.length > 120
+                val effectiveMaxLines = if (expanded || !isLong) Int.MAX_VALUE else 3
+
+                // animateContentSize smoothly grows/shrinks the body as maxLines
+                // changes, giving a real expand/collapse transition.
+                Text(
+                    text = content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = effectiveMaxLines,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.animateContentSize(
+                        animationSpec = tween(
+                            durationMillis = LocalAnimationDuration.current.medium,
+                            easing = LocalMotionCurve.current.decelerate,
+                        ),
+                    ),
+                )
+
+                if (isLong) {
+                    // Owns its own click: toggles expand/collapse WITHOUT opening
+                    // the entry (the gesture is consumed here, not propagated to
+                    // the card's tap-to-open). Tapping the body text still opens.
+                    Text(
+                        text = stringResource(
+                            if (expanded) R.string.action_collapse else R.string.action_expand,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .clickable { expanded = !expanded },
+                    )
+                }
+            }
         }
     }
 }
@@ -856,6 +851,29 @@ private fun AudioEntryContent(entry: MindDumpEntry) {
 // Video entry: thumbnail + play overlay
 // ──────────────────────────────────────────────
 
+/**
+ * Shared translucent play-button overlay, centered over a video tile. One size
+ * spec (48dp circle / 28dp icon) used by both the entry-card video body and the
+ * group-carousel video tile — previously two slightly different sizes.
+ */
+@Composable
+private fun VideoPlayOverlay() {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(28.dp),
+        )
+    }
+}
+
 @Composable
 private fun VideoEntryContent(entry: MindDumpEntry) {
     val innerShape = RoundedCornerShape(12.dp)
@@ -879,21 +897,7 @@ private fun VideoEntryContent(entry: MindDumpEntry) {
             contentScale = ContentScale.Crop,
         )
 
-        // Play button overlay
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.PlayArrow,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(28.dp),
-            )
-        }
+        VideoPlayOverlay()
     }
 
     if (showPlayer) {
@@ -938,7 +942,15 @@ private fun EntryType.toColor(): Color = when (this) {
     EntryType.TEXT -> MaterialTheme.colorScheme.primary
     EntryType.PHOTO -> MaterialTheme.colorScheme.tertiary
     EntryType.RECORDING -> MaterialTheme.colorScheme.secondary
-    EntryType.VIDEO -> MaterialTheme.colorScheme.error
+    // VIDEO is a non-error category: blend secondary + tertiary into a distinct
+    // theme-derived accent instead of reusing the error token (which is reserved
+    // for genuine error/urgent states like active recording).
+    EntryType.VIDEO -> lerp(
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        0.5f,
+    )
+
     EntryType.FILE -> MaterialTheme.colorScheme.onSurfaceVariant
     EntryType.UNKNOWN -> MaterialTheme.colorScheme.outline
 }
