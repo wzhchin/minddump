@@ -24,7 +24,7 @@ The Settings dialog SHALL expose a "重建数据库" (Rebuild database) action b
 
 ### Requirement: Rebuild wipes and repopulates the database from disk
 
-Upon confirmation, the system SHALL clear every row in the `entries` table, re-scan both Public and Private spaces from disk, insert all discovered entries, and rebuild the FTS full-text index. Files on disk SHALL NOT be read for modification, moved, renamed, or deleted.
+Upon confirmation, the system SHALL clear every row in the `entries` table, re-scan both Public and Private spaces from disk, insert all discovered entries, and rebuild the FTS full-text index. Files on disk SHALL NOT be read for modification, moved, renamed, or deleted. The re-scan SHALL exclude the `.trash/` directory so that trashed items are never re-indexed.
 
 #### Scenario: Confirm triggers full rebuild
 - **WHEN** the user confirms the rebuild
@@ -37,6 +37,10 @@ Upon confirmation, the system SHALL clear every row in the `entries` table, re-s
 - **WHEN** the rebuild re-scans a space
 - **THEN** each entry's `role`, `targetTimestamp`, `groupPath`, `monthFolder`, and `isEncrypted` SHALL be derived from the file/disk state via `FileMetadata`
 - **AND** Private-space entries SHALL be rebuilt without requiring an unlocked session password
+
+#### Scenario: Rebuild excludes trashed items
+- **WHEN** the rebuild re-scans a space whose `.trash/` sibling contains entries
+- **THEN** none of the trashed entries SHALL be inserted into the index or shown in the feed
 
 ### Requirement: Rebuild progress is non-cancellable
 
