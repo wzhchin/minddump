@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -146,6 +147,13 @@ fun MainScreen(
         if (searchExpanded) {
             runCatching { searchFocusRequester.requestFocus() }
         }
+    }
+
+    // Intercept the system back gesture while search is open so it collapses
+    // the search field instead of exiting the app.
+    BackHandler(enabled = searchExpanded) {
+        viewModel.clearSearch()
+        searchExpanded = false
     }
 
     // Dispatch the one-shot outbound-share result: open the Share sheet on a
