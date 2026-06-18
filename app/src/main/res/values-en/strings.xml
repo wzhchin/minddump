@@ -166,6 +166,14 @@
     <string name="status_wait">Waiting</string>
     <string name="status_done">Done</string>
     <string name="status_cancel">Canceled</string>
+    <!-- Entry action drawer labels (icon contentDescription / row labels) -->
+    <string name="action_rename">Rename</string>
+    <string name="action_multi_select">Multi-select</string>
+    <string name="action_move_to_group">Move to group</string>
+    <string name="action_move_out_of_group">Move out of group</string>
+    <string name="action_move_to_private">Move to Private</string>
+    <string name="action_move_to_public">Move to Public</string>
+    <string name="delete_action">Delete</string>
     <!-- Recycle bin (soft delete) -->
     <string name="trash">Trash</string>
     <string name="trash_empty">Trash is empty</string>

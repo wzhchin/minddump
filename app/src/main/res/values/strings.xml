@@ -166,6 +166,14 @@
     <string name="status_wait">等待</string>
     <string name="status_done">已完成</string>
     <string name="status_cancel">已取消</string>
+    <!-- Entry action drawer labels (icon contentDescription / row labels) -->
+    <string name="action_rename">重命名</string>
+    <string name="action_multi_select">多选</string>
+    <string name="action_move_to_group">移动到组</string>
+    <string name="action_move_out_of_group">移出该组</string>
+    <string name="action_move_to_private">移动到私有</string>
+    <string name="action_move_to_public">移动到公共</string>
+    <string name="delete_action">删除</string>
     <!-- Recycle bin (soft delete) -->
     <string name="trash">回收站</string>
     <string name="trash_empty">回收站为空</string>

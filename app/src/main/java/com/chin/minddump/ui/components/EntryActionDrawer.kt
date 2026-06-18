@@ -37,6 +37,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
@@ -61,10 +62,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.R
+import com.chin.minddump.storage.EntryEvent
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.storage.TodoState
+import com.chin.minddump.ui.formatFriendlyDateTime
 import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalExpressiveShapes
 import com.chin.minddump.ui.theme.rememberPremiumHaptics
@@ -128,19 +131,132 @@ fun EntryActionDrawer(
                 modifier = Modifier.padding(bottom = 16.dp, start = 8.dp),
             )
 
-            // Action items
-            // Pin toggle — comments cannot be pinned.
-            if (!isComment && onTogglePin != null) {
-                ActionItem(
-                    icon = Icons.Filled.PushPin,
-                    label = stringResource(if (entry.isPinned) R.string.unpin else R.string.pin),
-                    onClick = {
+            // Quick-action bar: label-free icon buttons that wrap to a second row.
+            // Pure-presentation reorganization of the previously full-width rows;
+            // every onClick, conditional-visibility rule, and sub-dialog below is
+            // unchanged.
+            val onSurfaceTint = MaterialTheme.colorScheme.onSurface
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // Pin toggle — comments cannot be pinned. A pinned entry gets a
+                // primary-tint cue so the state reads without a label.
+                if (!isComment && onTogglePin != null) {
+                    IconButton(onClick = {
                         haptics.perform(HapticPattern.Tick)
                         onTogglePin()
                         onDismiss()
-                    },
-                )
+                    }) {
+                        Icon(
+                            Icons.Filled.PushPin,
+                            contentDescription = stringResource(
+                                if (entry.isPinned) R.string.unpin else R.string.pin,
+                            ),
+                            tint = if (entry.isPinned) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                onSurfaceTint
+                            },
+                        )
+                    }
+                }
+                // Add comment — comments cannot target other comments.
+                if (!isComment && onAddComment != null) {
+                    IconButton(onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        showCommentDialog = true
+                    }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Comment,
+                            contentDescription = stringResource(R.string.add_comment),
+                            tint = onSurfaceTint,
+                        )
+                    }
+                }
+                // Share — the one action comments DO get; exports to other apps.
+                if (onShare != null) {
+                    IconButton(onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onShare()
+                        onDismiss()
+                    }) {
+                        Icon(
+                            Icons.Filled.Share,
+                            contentDescription = stringResource(R.string.share),
+                            tint = onSurfaceTint,
+                        )
+                    }
+                }
+                IconButton(onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    showRenameDialog = true
+                }) {
+                    Icon(
+                        Icons.Filled.DriveFileRenameOutline,
+                        contentDescription = stringResource(R.string.action_rename),
+                        tint = onSurfaceTint,
+                    )
+                }
+                IconButton(onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    onMultiSelect()
+                    onDismiss()
+                }) {
+                    Icon(
+                        Icons.Filled.SelectAll,
+                        contentDescription = stringResource(R.string.action_multi_select),
+                        tint = onSurfaceTint,
+                    )
+                }
+                IconButton(onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    showGroupPicker = true
+                }) {
+                    Icon(
+                        Icons.Filled.Folder,
+                        contentDescription = stringResource(R.string.action_move_to_group),
+                        tint = onSurfaceTint,
+                    )
+                }
+                if (entry.groupPath != null && onMoveOutOfGroup != null) {
+                    IconButton(onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onMoveOutOfGroup()
+                        onDismiss()
+                    }) {
+                        Icon(
+                            Icons.Filled.FolderOpen,
+                            contentDescription = stringResource(R.string.action_move_out_of_group),
+                            tint = onSurfaceTint,
+                        )
+                    }
+                }
+                val targetSpace = if (currentSpace == Space.PUBLIC) Space.PRIVATE else Space.PUBLIC
+                val spaceIcon = if (targetSpace == Space.PRIVATE) Icons.Filled.Lock else Icons.Filled.LockOpen
+                val spaceLabelRes = if (targetSpace == Space.PUBLIC) {
+                    R.string.action_move_to_public
+                } else {
+                    R.string.action_move_to_private
+                }
+                IconButton(onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    onMoveToSpace(targetSpace)
+                    onDismiss()
+                }) {
+                    Icon(
+                        spaceIcon,
+                        contentDescription = stringResource(spaceLabelRes),
+                        tint = onSurfaceTint,
+                    )
+                }
             }
+
+            // Detail rows: full-width rows whose trailing summary surfaces state.
+
             // Todo status — comments cannot carry a status.
             if (!isComment && onSetStatus != null) {
                 ActionItem(
@@ -161,18 +277,7 @@ fun EntryActionDrawer(
                     },
                 )
             }
-            // Add comment — comments cannot target other comments.
-            if (!isComment && onAddComment != null) {
-                ActionItem(
-                    icon = Icons.AutoMirrored.Filled.Comment,
-                    label = stringResource(R.string.add_comment),
-                    onClick = {
-                        haptics.perform(HapticPattern.Tick)
-                        showCommentDialog = true
-                    },
-                )
-            }
-            // Tags — open the tag editor sheet.
+            // Tags — open the tag editor sheet; shows existing tags inline.
             if (onEditTags != null) {
                 ActionItem(
                     icon = Icons.Filled.Label,
@@ -193,20 +298,15 @@ fun EntryActionDrawer(
                     },
                 )
             }
-            // Scheduled event — open the date/time picker.
+            // Scheduled event — open the date/time picker; shows the due time.
             if (onAddEvent != null) {
                 ActionItem(
                     icon = Icons.Filled.Notifications,
                     label = stringResource(R.string.event_add),
                     trailing = {
-                        val pending = entry.events.any { it.state == com.chin.minddump.storage.EventState.PENDING }
-                        if (entry.events.isNotEmpty()) {
+                        nextEventDue(entry.events)?.let { due ->
                             Text(
-                                text = if (pending) {
-                                    stringResource(R.string.event_pending)
-                                } else {
-                                    stringResource(R.string.event_fired)
-                                },
+                                text = formatFriendlyDateTime(due),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -219,69 +319,9 @@ fun EntryActionDrawer(
                     },
                 )
             }
-            // Share — the one action comments DO get; exports to other apps.
-            if (onShare != null) {
-                ActionItem(
-                    icon = Icons.Filled.Share,
-                    label = stringResource(R.string.share),
-                    onClick = {
-                        haptics.perform(HapticPattern.Tick)
-                        onShare()
-                        onDismiss()
-                    },
-                )
-            }
-            ActionItem(
-                icon = Icons.Filled.DriveFileRenameOutline,
-                label = "重命名",
-                onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    showRenameDialog = true
-                },
-            )
-            ActionItem(
-                icon = Icons.Filled.SelectAll,
-                label = "多选",
-                onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    onMultiSelect()
-                    onDismiss()
-                },
-            )
-            ActionItem(
-                icon = Icons.Filled.Folder,
-                label = "移动到组",
-                onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    showGroupPicker = true
-                },
-            )
-            if (entry.groupPath != null && onMoveOutOfGroup != null) {
-                ActionItem(
-                    icon = Icons.Filled.FolderOpen,
-                    label = "移出该组",
-                    onClick = {
-                        haptics.perform(HapticPattern.Tick)
-                        onMoveOutOfGroup()
-                        onDismiss()
-                    },
-                )
-            }
-            val targetSpace = if (currentSpace == Space.PUBLIC) Space.PRIVATE else Space.PUBLIC
-            val spaceIcon = if (targetSpace == Space.PRIVATE) Icons.Filled.Lock else Icons.Filled.LockOpen
-            val spaceLabel = if (targetSpace == Space.PUBLIC) "移动到公共" else "移动到私有"
-            ActionItem(
-                icon = spaceIcon,
-                label = spaceLabel,
-                onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    onMoveToSpace(targetSpace)
-                    onDismiss()
-                },
-            )
             ActionItem(
                 icon = Icons.Filled.Delete,
-                label = "删除",
+                label = stringResource(R.string.delete_action),
                 isDestructive = true,
                 onClick = {
                     haptics.perform(HapticPattern.Tick)
@@ -373,6 +413,23 @@ private fun statusIcon(state: TodoState): ImageVector = when (state) {
     TodoState.DONE -> Icons.Filled.CheckCircle
     TodoState.CANCEL -> Icons.Filled.CheckCircle
     else -> Icons.Filled.TaskAlt
+}
+
+/**
+ * The due time to surface in the reminder row's trailing summary: the soonest
+ * pending event, else (if all have fired) the most-recent fired event, else null
+ * when the entry has no events. The picker remains the place to manage them.
+ */
+private fun nextEventDue(events: List<EntryEvent>): java.time.LocalDateTime? {
+    if (events.isEmpty()) return null
+    val pending = events
+        .filter { it.state == com.chin.minddump.storage.EventState.PENDING }
+        .minByOrNull { it.due }
+    if (pending != null) return pending.due
+    return events
+        .filter { it.state == com.chin.minddump.storage.EventState.FIRED }
+        .maxByOrNull { it.due }
+        ?.due
 }
 
 private fun extractOriginalName(entry: MindDumpEntry): String? {
