@@ -70,6 +70,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.R
+import com.chin.minddump.storage.EntryEvent
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.FileMetadata
@@ -86,7 +87,7 @@ import com.chin.minddump.ui.components.PasswordInputDialog
 import com.chin.minddump.ui.components.PasswordSetupDialog
 import com.chin.minddump.ui.components.RebuildDatabaseDialog
 import com.chin.minddump.ui.components.SettingsDialog
-import com.chin.minddump.ui.components.EventDateTimePicker
+import com.chin.minddump.ui.components.ReminderSheet
 import com.chin.minddump.ui.components.TagEditorSheet
 import com.chin.minddump.ui.components.TrashScreen
 import com.chin.minddump.ui.components.SpaceSelectionDialog
@@ -559,12 +560,15 @@ fun MainScreen(
                 )
             }
 
-            // Event date/time picker
+            // Reminder sheet (WeChat-style)
             uiState.eventEditorFor?.let { entry ->
-                EventDateTimePicker(
-                    onConfirm = { dateTime ->
+                ReminderSheet(
+                    events = entry.events,
+                    onSchedule = { dateTime ->
                         viewModel.addEntryEvent(entry, dateTime)
-                        viewModel.closeEventEditor()
+                    },
+                    onRemove = { event ->
+                        viewModel.removeEntryEvent(entry, event)
                     },
                     onDismiss = { viewModel.closeEventEditor() },
                 )

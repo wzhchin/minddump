@@ -33,6 +33,9 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -420,7 +423,7 @@ private fun statusIcon(state: TodoState): ImageVector = when (state) {
  * pending event, else (if all have fired) the most-recent fired event, else null
  * when the entry has no events. The picker remains the place to manage them.
  */
-private fun nextEventDue(events: List<EntryEvent>): java.time.LocalDateTime? {
+fun nextEventDue(events: List<EntryEvent>): java.time.LocalDateTime? {
     if (events.isEmpty()) return null
     val pending = events
         .filter { it.state == com.chin.minddump.storage.EventState.PENDING }
@@ -1061,4 +1064,185 @@ fun EventDateTimePicker(
             },
         )
     }
+}
+
+// ──────────────────────────────────────────────
+// Reminder Sheet (WeChat-style)
+// ──────────────────────────────────────────────
+
+/**
+ * WeChat-style reminder authoring sheet. Lists the entry's existing reminders
+ * (removable), offers quick-selection chips for the next few days, and a
+ * "custom…" affordance that opens [EventDateTimePicker] for an exact date/time.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ReminderSheet(
+    events: List<EntryEvent>,
+    onSchedule: (java.time.LocalDateTime) -> Unit,
+    onRemove: (EntryEvent) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shapes = LocalExpressiveShapes.current
+    var showCustomPicker by remember { mutableStateOf(false) }
+    val haptics = rememberPremiumHaptics()
+    val now = remember { java.time.LocalDateTime.now() }
+
+    // Quick-selection chips: (labelRes, computeDue) — due is never in the past.
+    val quickOptions: List<Pair<Int, () -> java.time.LocalDateTime>> = remember(now) {
+        listOf(
+            R.string.reminder_today to { nextHourToday(now) },
+            R.string.reminder_tomorrow to {
+                java.time.LocalDateTime.of(now.toLocalDate().plusDays(1), java.time.LocalTime.of(9, 0))
+            },
+            R.string.reminder_day_after to {
+                java.time.LocalDateTime.of(now.toLocalDate().plusDays(2), java.time.LocalTime.of(9, 0))
+            },
+            R.string.reminder_next_monday to {
+                val monday = nextMonday(now.toLocalDate())
+                java.time.LocalDateTime.of(monday, java.time.LocalTime.of(9, 0))
+            },
+        )
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = shapes.cardLarge as RoundedCornerShape,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.reminder_sheet_title),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 12.dp, start = 8.dp),
+            )
+
+            // Existing reminders — removable rows.
+            if (events.isNotEmpty()) {
+                events.sortedBy { it.due }.forEach { event ->
+                    ReminderRow(event = event, onRemove = {
+                        haptics.perform(HapticPattern.Tick)
+                        onRemove(event)
+                    })
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            }
+
+            // Quick-selection chips.
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                quickOptions.forEach { (labelRes, compute) ->
+                    val due = compute()
+                    val enabled = due.isAfter(now)
+                    SuggestionChip(
+                        enabled = enabled,
+                        onClick = {
+                            if (enabled) {
+                                haptics.perform(HapticPattern.Tick)
+                                onSchedule(due)
+                                onDismiss()
+                            }
+                        },
+                        label = {
+                            Text(stringResource(labelRes) + " " + formatFriendlyDateTime(due))
+                        },
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Custom date+time entry.
+            FilledTonalButton(
+                onClick = {
+                    haptics.perform(HapticPattern.Tick)
+                    showCustomPicker = true
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    Icons.Filled.Notifications,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.reminder_custom))
+            }
+        }
+    }
+
+    if (showCustomPicker) {
+        EventDateTimePicker(
+            onConfirm = { dateTime ->
+                onSchedule(dateTime)
+                showCustomPicker = false
+                onDismiss()
+            },
+            onDismiss = { showCustomPicker = false },
+        )
+    }
+}
+
+@Composable
+private fun ReminderRow(event: EntryEvent, onRemove: () -> Unit) {
+    val isFired = event.state == com.chin.minddump.storage.EventState.FIRED
+    val suffixRes = if (isFired) R.string.event_fired else R.string.event_pending
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Notifications,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = if (isFired) 0.4f else 1f),
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = formatFriendlyDateTime(event.due),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isFired) 0.6f else 1f),
+            )
+            Text(
+                text = stringResource(suffixRes),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onRemove) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = stringResource(R.string.event_remove),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Today at the next hour, clamped to 08:00..22:00; falls to tomorrow 09:00 if past. */
+private fun nextHourToday(now: java.time.LocalDateTime): java.time.LocalDateTime {
+    var hour = (now.hour + 1).coerceIn(8, 22)
+    var candidate = now.toLocalDate().atTime(hour, 0)
+    // If today is already exhausted (hour clamped to 22 and still in the past),
+    // roll to tomorrow 09:00.
+    if (!candidate.isAfter(now)) {
+        candidate = now.toLocalDate().plusDays(1).atTime(9, 0)
+    }
+    return candidate
+}
+
+private fun nextMonday(today: java.time.LocalDate): java.time.LocalDate {
+    val dow = today.dayOfWeek.value // Mon=1..Sun=7
+    val delta = ((8 - dow) % 7).let { if (it == 0) 7 else it } // days until next Monday
+    return today.plusDays(delta.toLong())
 }

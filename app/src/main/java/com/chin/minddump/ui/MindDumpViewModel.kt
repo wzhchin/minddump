@@ -698,6 +698,20 @@ class MindDumpViewModel
             _uiState.update { it.copy(requestNotificationPermission = false) }
         }
 
+        fun removeEntryEvent(entry: MindDumpEntry, event: com.chin.minddump.storage.EntryEvent) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val updated = repository.removeEvent(entry, event.key())
+                _uiState.update {
+                    it.copy(
+                        selectedEntryForAction = it.selectedEntryForAction?.let { sel ->
+                            if (sel.file == entry.file) updated else sel
+                        },
+                    )
+                }
+                refreshEntries()
+            }
+        }
+
         fun addEntryEvent(entry: MindDumpEntry, dateTime: java.time.LocalDateTime) {
             viewModelScope.launch(Dispatchers.IO) {
                 val event = com.chin.minddump.storage.EntryEvent(

@@ -207,6 +207,14 @@
     <string name="event_enable_notifications_hint">Notifications disabled; events are still recorded but no reminder is shown</string>
 
     <!-- Tags -->
+    <!-- Reminder sheet -->
+    <string name="reminder_sheet_title">Reminders</string>
+    <string name="reminder_custom">Custom…</string>
+    <string name="reminder_today">Today</string>
+    <string name="reminder_tomorrow">Tomorrow</string>
+    <string name="reminder_day_after">Day after</string>
+    <string name="reminder_next_monday">Next Mon</string>
+
     <string name="tag_add">Add tag</string>
     <string name="tag_invalid">Tags cannot contain spaces, #, or /</string>
     <string name="tag_filter_label">Tag filter</string>

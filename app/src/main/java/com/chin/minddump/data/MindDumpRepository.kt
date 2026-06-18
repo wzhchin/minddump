@@ -498,6 +498,20 @@ class MindDumpRepository
             saveEntryMeta(entry, updated)
         }
 
+        /**
+         * Remove a single event by its key: drop it from the sidecar (deleting
+         * the sidecar when it becomes empty) and cancel its registered alarm.
+         * Safe to call from a non-UI context; returns the refreshed entry.
+         */
+        suspend fun removeEvent(entry: MindDumpEntry, eventKey: String): MindDumpEntry =
+            withContext(Dispatchers.IO) {
+                val meta = loadEntryMeta(entry)
+                val updated = meta.copy(events = meta.events.filterNot { it.key() == eventKey })
+                val refreshed = saveEntryMeta(entry, updated)
+                eventScheduler.cancel(entry.file, entry.space, eventKey)
+                refreshed
+            }
+
         /** Snapshot all distinct tags in a space (for autocomplete). */
         suspend fun distinctTags(space: Space): List<String> =
             withContext(Dispatchers.IO) {

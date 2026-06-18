@@ -207,6 +207,14 @@
     <string name="event_enable_notifications_hint">未开启通知权限，事件仍会记录但不会显示提醒</string>
 
     <!-- Tags -->
+    <!-- Reminder sheet -->
+    <string name="reminder_sheet_title">提醒</string>
+    <string name="reminder_custom">自定义…</string>
+    <string name="reminder_today">今天</string>
+    <string name="reminder_tomorrow">明天</string>
+    <string name="reminder_day_after">后天</string>
+    <string name="reminder_next_monday">下周一</string>
+
     <string name="tag_add">添加标签</string>
     <string name="tag_invalid">标签不能包含空格、# 或 /</string>
     <string name="tag_filter_label">标签筛选</string>

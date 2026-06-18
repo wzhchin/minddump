@@ -40,6 +40,11 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.filled.Notifications
+import com.chin.minddump.storage.EventState
+import com.chin.minddump.ui.components.nextEventDue
+import com.chin.minddump.ui.formatFriendlyDateTime
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -615,6 +620,12 @@ fun EntryItem(
             else -> FileEntryContent(entry)
         }
 
+        // ── Tags + reminder footer (omitted in multi-select / when empty) ──
+        if (!isMultiSelectMode && (entry.tags.isNotEmpty() || entry.events.isNotEmpty())) {
+            Spacer(modifier = Modifier.height(4.dp))
+            EntryCardMetaFooter(entry)
+        }
+
         // ── In-card collapsed comments (omitted in multi-select) ──
         if (!isMultiSelectMode && comments.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -992,6 +1003,84 @@ private fun formatRelativeTimestamp(monthFolder: String, timestamp: String): Str
         else -> {
             val fmt = DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm")
             entryDateTime.format(fmt)
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
+// Card footer: tags + reminder at a glance
+// ──────────────────────────────────────────────
+
+/**
+ * Read-only summary of an entry's sidecar metadata, rendered as a wrap of tonal
+ * chips below the card body. Tags become `#tag` chips; the soonest pending (or,
+ * when all fired, the most-recent fired) event becomes a bell chip.
+ */
+@Composable
+private fun EntryCardMetaFooter(entry: MindDumpEntry) {
+    val reminderDue = nextEventDue(entry.events)
+    val reminderEvent = remember(entry.events, reminderDue) {
+        if (reminderDue == null) null
+        else entry.events.firstOrNull { it.due == reminderDue }
+    }
+
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        entry.tags.forEach { tag ->
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+            ) {
+                Text(
+                    text = "#$tag",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+        }
+        if (reminderEvent != null) {
+            val isFired = reminderEvent.state == EventState.FIRED
+            val label = buildString {
+                append(formatFriendlyDateTime(reminderEvent.due))
+                if (isFired) {
+                    append(" · ")
+                    append(stringResource(R.string.event_fired))
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(
+                    alpha = if (isFired) 0.4f else 0.7f,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Notifications,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(
+                            alpha = if (isFired) 0.5f else 1f,
+                        ),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(
+                            alpha = if (isFired) 0.6f else 1f,
+                        ),
+                    )
+                }
+            }
         }
     }
 }
