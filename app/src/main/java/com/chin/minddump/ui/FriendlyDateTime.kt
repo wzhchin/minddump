@@ -23,11 +23,13 @@ fun formatFriendlyDateTime(
     today: LocalDate = LocalDate.now(),
 ): String {
     val date = dateTime.toLocalDate()
-    val time = DateTimeFormatter.ofPattern("HH:mm")
+    val time = dateTime.format(DateTimeFormatter.ofPattern("HH:mm"))
+    val dayMonth = dateTime.format(DateTimeFormatter.ofPattern("M月d日"))
+    val fullDate = dateTime.format(DateTimeFormatter.ofPattern("yyyy年M月d日"))
     return when {
-        date == today -> dateTime.format(DateTimeFormatter.ofPattern("今天 $time"))
-        date == today.minusDays(1) -> dateTime.format(DateTimeFormatter.ofPattern("昨天 $time"))
-        date.year == today.year -> dateTime.format(DateTimeFormatter.ofPattern("M月d日 $time"))
-        else -> dateTime.format(DateTimeFormatter.ofPattern("yyyy年M月d日 $time"))
+        date == today -> "今天 $time"
+        date == today.minusDays(1) -> "昨天 $time"
+        date.year == today.year -> "$dayMonth $time"
+        else -> "$fullDate $time"
     }
 }
