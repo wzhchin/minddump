@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
@@ -51,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -99,17 +101,21 @@ import java.time.format.DateTimeFormatter
  */
 sealed interface FeedItem {
     val sortKey: Long
+    val isPinned: Boolean
 
     data class Loose(
         val grouped: GroupedEntry
     ) : FeedItem {
         override val sortKey: Long get() = grouped.entry.file.lastModified()
+        override val isPinned: Boolean get() = grouped.entry.isPinned
     }
 
     data class GroupCard(
         val summary: GroupSummary
     ) : FeedItem {
         override val sortKey: Long get() = summary.latestModified
+        override val isPinned: Boolean
+            get() = FileMetadata.fromFile(summary.groupDir)?.isPinned == true
     }
 }
 
@@ -133,8 +139,12 @@ fun EntryList(
     val looseGrouped = groupedEntries.map { FeedItem.Loose(it) }
     val groupCards = groups.map { FeedItem.GroupCard(it) }
 
-    val displayItems = (looseGrouped + groupCards)
-        .sortedByDescending { it.sortKey }
+    // Newest-first, pinned-first: index 0 is the visual top (no reverseLayout),
+    // so pinned + newest entries render above everything, like Twitter.
+    val displayItems = (looseGrouped + groupCards).sortedWith(
+        compareByDescending<FeedItem> { it.isPinned }
+            .thenByDescending { it.sortKey },
+    )
 
     if (displayItems.isEmpty()) {
         Box(
@@ -156,11 +166,22 @@ fun EntryList(
         tween(animDuration.medium, easing = motionCurve.decelerate)
     val fadeOutSpec: FiniteAnimationSpec<Float> = tween(animDuration.short)
 
+    // Scroll-to-top (newest) when a fresh entry joins the feed, mirroring how
+    // Twitter-like feeds surface new posts. Tracked against the previously seen
+    // size so the initial composition and deletions don't trigger a jump.
+    val listState = rememberLazyListState()
+    val previousSize = remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(displayItems.size) {
+        val prev = previousSize.value
+        previousSize.value = displayItems.size
+        if (prev != null && displayItems.size > prev) listState.animateScrollToItem(0)
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
+        state = listState,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        reverseLayout = true,
     ) {
         items(
             items = displayItems,
