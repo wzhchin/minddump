@@ -1,6 +1,7 @@
 package com.chin.minddump.ui.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +26,7 @@ import java.io.File
  * MindDump loads from local [File]s, so a [File] overload is provided in
  * addition to the String-URI version.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ZoomableAsyncImage(
     model: Any?,
@@ -33,6 +35,7 @@ fun ZoomableAsyncImage(
     alignment: Alignment = Alignment.Center,
     contentScale: ContentScale = ContentScale.Fit,
     alpha: Float = DefaultAlpha,
+    onLongClick: (() -> Unit)? = null,
 ) {
     var showImageViewer by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -49,7 +52,9 @@ fun ZoomableAsyncImage(
         contentDescription = contentDescription,
         modifier = modifier
             .then(if (loading) Modifier.shimmerEffect() else Modifier)
-            .clickable {
+            .combinedClickable(
+                onLongClick = onLongClick.takeIf { it != null },
+            ) {
                 val data = model
                 val imageUri = when (data) {
                     is File -> data.absolutePath

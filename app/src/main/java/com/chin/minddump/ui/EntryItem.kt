@@ -887,11 +887,7 @@ private fun PhotoEntryContent(entry: MindDumpEntry, onLongClick: () -> Unit = {}
             modifier = Modifier
                 .fillMaxWidth()
                 .height(200.dp)
-                .clip(clip)
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = onLongClick,
-                ),
+                .clip(clip),
             contentAlignment = Alignment.Center,
         ) {
             ZoomableAsyncImage(
@@ -899,6 +895,7 @@ private fun PhotoEntryContent(entry: MindDumpEntry, onLongClick: () -> Unit = {}
                 contentDescription = stringResource(R.string.photo),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
+                onLongClick = onLongClick,
             )
         }
     }
