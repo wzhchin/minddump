@@ -314,17 +314,11 @@ fun GroupSummaryCard(
             }
             // Todo status badge for statused groups
             if (todoState != TodoState.NONE) {
-                Surface(
-                    shape = CircleShape,
-                    color = statusBadgeColor(todoState),
-                ) {
-                    Text(
-                        text = statusLabel(todoState),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
+                MetaChip(
+                    text = statusLabel(todoState),
+                    containerColor = statusBadgeColor(todoState),
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
                 Spacer(modifier = Modifier.width(4.dp))
             }
             if (isMultiSelectMode) {
@@ -355,20 +349,13 @@ fun GroupSummaryCard(
                 )
             } else {
                 typeCounts.forEach { (type, count) ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = type.toIcon(),
-                            contentDescription = type.name,
-                            tint = type.toColor(),
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "×$count",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    MetaChip(
+                        text = "×$count",
+                        containerColor = type.toColor().copy(alpha = 0.15f),
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        leadingIcon = type.toIcon(),
+                        iconTint = type.toColor(),
+                    )
                 }
             }
         }
@@ -477,79 +464,6 @@ fun GroupedEntryItem(
 // ──────────────────────────────────────────────
 // Comments — collapsed in-card list
 // ──────────────────────────────────────────────
-
-/**
- * Renders comments as a collapsed, expandable list inside the parent entry card:
- * an affordance summarizing the count, which expands to timestamped content
- * previews. Tapping a preview opens that comment.
- */
-@Composable
-private fun CommentListSection(
-    comments: List<MindDumpEntry>,
-    onCommentClick: (MindDumpEntry) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val haptics = rememberPremiumHaptics()
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
-            .clip(LocalExpressiveShapes.current.cardSmall)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-    ) {
-        // Expand/collapse affordance
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(
-                    onClick = {
-                        haptics.perform(HapticPattern.Tick)
-                        expanded = !expanded
-                    },
-                ).padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Edit,
-                contentDescription = stringResource(R.string.comment_label),
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = if (expanded) {
-                    stringResource(R.string.comments_collapse)
-                } else {
-                    stringResource(R.string.comments_expand, comments.size)
-                },
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-
-        // Expanded previews
-        AnimatedVisibility(visible = expanded) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                comments.forEach { comment ->
-                    CommentPreview(
-                        comment = comment,
-                        onClick = {
-                            haptics.perform(HapticPattern.Tick)
-                            onCommentClick(comment)
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
 
 /**
  * One expanded comment: a timestamp + a few-line content preview. Tapping opens it.
@@ -677,16 +591,16 @@ fun EntryItem(
             }
         }
 
-        // ── Tags + reminder footer (omitted in multi-select / when empty) ──
-        if (!isMultiSelectMode && (entry.tags.isNotEmpty() || entry.events.isNotEmpty())) {
+        // ── Tags + reminder + comments footer (omitted in multi-select / when empty) ──
+        val hasFooter = !isMultiSelectMode &&
+            (entry.tags.isNotEmpty() || entry.events.isNotEmpty() || comments.isNotEmpty())
+        if (hasFooter) {
             Spacer(modifier = Modifier.height(4.dp))
-            EntryCardMetaFooter(entry)
-        }
-
-        // ── In-card collapsed comments (omitted in multi-select) ──
-        if (!isMultiSelectMode && comments.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            CommentListSection(comments = comments, onCommentClick = onCommentClick)
+            EntryCardMetaFooter(
+                entry = entry,
+                comments = comments,
+                onCommentClick = onCommentClick,
+            )
         }
 
         // ── Orphan-comment indicator (its parent file was deleted) ──
@@ -840,27 +754,21 @@ private fun IndicatorCluster(
     // Todo status badge for statused entries
     if (entry.todoState != TodoState.NONE) {
         val isClosed = entry.todoState == TodoState.DONE || entry.todoState == TodoState.CANCEL
-        Surface(
-            shape = CircleShape,
-            color = if (floating) {
+        MetaChip(
+            text = statusLabel(entry.todoState),
+            containerColor = if (floating) {
                 androidx.compose.ui.graphics.Color.White.copy(alpha = 0.25f)
             } else {
                 statusBadgeColor(entry.todoState)
             },
-        ) {
-            Text(
-                text = statusLabel(entry.todoState),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (floating) {
-                    onSurface.copy(alpha = if (isClosed) 0.7f else 1f)
-                } else {
-                    MaterialTheme.colorScheme.onSecondaryContainer.copy(
-                        alpha = if (isClosed) 0.6f else 1f,
-                    )
-                },
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            )
-        }
+            contentColor = if (floating) {
+                onSurface.copy(alpha = if (isClosed) 0.7f else 1f)
+            } else {
+                MaterialTheme.colorScheme.onSecondaryContainer.copy(
+                    alpha = if (isClosed) 0.6f else 1f,
+                )
+            },
+        )
         Spacer(modifier = Modifier.width(4.dp))
     }
 
@@ -1198,73 +1106,159 @@ private fun formatRelativeTimestamp(monthFolder: String, timestamp: String): Str
 // Card footer: tags + reminder at a glance
 // ──────────────────────────────────────────────
 
+// ──────────────────────────────────────────────
+// Unified meta chip
+// ──────────────────────────────────────────────
+
+private val META_CHIP_SHAPE = RoundedCornerShape(8.dp)
+private val META_CHIP_ICON_SIZE = 14.dp
+
+/**
+ * The single chip style used for every outer-card meta indicator: tags,
+ * reminders, comment counts, todo badges, and group type counts. One shape,
+ * one padding, one typography, one icon size — color still carries semantics.
+ *
+ * Pass [leadingIcon] for chips with an icon (reminder, comment, type count);
+ * leave it `null` for text-only chips (tags, todo status text).
+ */
+@Composable
+private fun MetaChip(
+    text: String,
+    containerColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+    leadingIcon: ImageVector? = null,
+    iconTint: Color = contentColor,
+) {
+    Surface(
+        shape = META_CHIP_SHAPE,
+        color = containerColor,
+        modifier = modifier,
+    ) {
+        if (leadingIcon == null) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        } else {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = leadingIcon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(META_CHIP_ICON_SIZE),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = contentColor,
+                )
+            }
+        }
+    }
+}
+
 /**
  * Read-only summary of an entry's sidecar metadata, rendered as a wrap of tonal
  * chips below the card body. Tags become `#tag` chips; the soonest pending (or,
  * when all fired, the most-recent fired) event becomes a bell chip.
  */
 @Composable
-private fun EntryCardMetaFooter(entry: MindDumpEntry) {
+private fun EntryCardMetaFooter(
+    entry: MindDumpEntry,
+    comments: List<MindDumpEntry>,
+    onCommentClick: (MindDumpEntry) -> Unit,
+) {
     val reminderDue = nextEventDue(entry.events)
     val reminderEvent = remember(entry.events, reminderDue) {
         if (reminderDue == null) null
         else entry.events.firstOrNull { it.due == reminderDue }
     }
+    var commentsExpanded by remember { mutableStateOf(false) }
+    val haptics = rememberPremiumHaptics()
 
-    FlowRow(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        entry.tags.forEach { tag ->
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-            ) {
-                Text(
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            entry.tags.forEach { tag ->
+                MetaChip(
                     text = "#$tag",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            if (reminderEvent != null) {
+                val isFired = reminderEvent.state == EventState.FIRED
+                val label = buildString {
+                    append(formatFriendlyDateTime(reminderEvent.due))
+                    if (isFired) {
+                        append(" · ")
+                        append(stringResource(R.string.event_fired))
+                    }
+                }
+                MetaChip(
+                    text = label,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(
+                        alpha = if (isFired) 0.4f else 0.7f,
+                    ),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(
+                        alpha = if (isFired) 0.6f else 1f,
+                    ),
+                    leadingIcon = Icons.Filled.Notifications,
+                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer.copy(
+                        alpha = if (isFired) 0.5f else 1f,
+                    ),
+                )
+            }
+            if (comments.isNotEmpty()) {
+                val label = if (commentsExpanded) {
+                    stringResource(R.string.comments_collapse)
+                } else {
+                    stringResource(R.string.comments_expand, comments.size)
+                }
+                MetaChip(
+                    text = label,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    leadingIcon = Icons.Filled.Edit,
+                    iconTint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                    modifier = Modifier.clickable {
+                        haptics.perform(HapticPattern.Tick)
+                        commentsExpanded = !commentsExpanded
+                    },
                 )
             }
         }
-        if (reminderEvent != null) {
-            val isFired = reminderEvent.state == EventState.FIRED
-            val label = buildString {
-                append(formatFriendlyDateTime(reminderEvent.due))
-                if (isFired) {
-                    append(" · ")
-                    append(stringResource(R.string.event_fired))
-                }
-            }
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(
-                    alpha = if (isFired) 0.4f else 0.7f,
-                ),
+
+        // Expanded comment previews live directly under the chip row so the
+        // whole meta footer is one self-contained block.
+        AnimatedVisibility(visible = commentsExpanded && comments.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Notifications,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(
-                            alpha = if (isFired) 0.5f else 1f,
-                        ),
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(
-                            alpha = if (isFired) 0.6f else 1f,
-                        ),
+                comments.forEach { comment ->
+                    CommentPreview(
+                        comment = comment,
+                        onClick = {
+                            haptics.perform(HapticPattern.Tick)
+                            onCommentClick(comment)
+                        },
                     )
                 }
             }
