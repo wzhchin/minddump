@@ -655,6 +655,17 @@ class MindDumpRepository
             }
 
         /**
+         * Remove a group directory that is already empty (its members moved
+         * elsewhere, e.g. after a multi-select re-cluster merge). Reconciles so
+         * the dropped group no longer appears in the index. Idempotent.
+         */
+        suspend fun removeEmptyGroupDir(groupDir: File, space: Space) =
+            withContext(Dispatchers.IO) {
+                storageEngine.removeEmptyGroupDir(groupDir)
+                reconcileWithDisk(space)
+            }
+
+        /**
          * Move an entry into a group directory.
          */
         suspend fun moveToGroup(entry: MindDumpEntry, groupDir: File) =

@@ -150,6 +150,12 @@
     <string name="group_unnamed">未命名分组</string>
     <string name="group_member_count">%1$d 项</string>
     <string name="group_empty">空分组</string>
+    <string name="group_dissolve">解散分组</string>
+    <string name="group_dissolve_confirm">解散“%1$s”？组内成员将移出，不会被删除。</string>
+    <string name="group_delete_confirm_title">删除分组</string>
+    <string name="group_delete_confirm">删除“%1$s”？分组及其成员将移入回收站，可恢复。</string>
+    <string name="multiselect_count">已选 %1$d 项</string>
+    <string name="multiselect_count_with_groups">已选 %1$d 项 · 含 %2$d 分组</string>
     <string name="group_media_preview">分组内容预览</string>
     <string name="comments_expand">▸ %1$d 条评论</string>
     <string name="comments_collapse">▾ 收起评论</string>

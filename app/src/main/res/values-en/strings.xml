@@ -150,6 +150,12 @@
     <string name="group_unnamed">Unnamed group</string>
     <string name="group_member_count">%1$d items</string>
     <string name="group_empty">Empty group</string>
+    <string name="group_dissolve">Dissolve group</string>
+    <string name="group_dissolve_confirm">Dissolve "%1$s"? Members will be moved out, not deleted.</string>
+    <string name="group_delete_confirm_title">Delete group</string>
+    <string name="group_delete_confirm">Delete "%1$s"? The group and its members will be moved to the trash and can be restored.</string>
+    <string name="multiselect_count">Selected %1$d</string>
+    <string name="multiselect_count_with_groups">Selected %1$d · %2$d groups</string>
     <string name="group_media_preview">Group content preview</string>
     <string name="comments_expand">▸ %1$d comments</string>
     <string name="comments_collapse">▾ Hide comments</string>

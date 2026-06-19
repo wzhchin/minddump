@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -128,6 +129,7 @@ fun EntryList(
     isMultiSelectMode: Boolean = false,
     selectedEntries: Set<MindDumpEntry> = emptySet(),
     groups: List<GroupSummary> = emptyList(),
+    selectedGroups: Set<File> = emptySet(),
     onGroupClick: (File) -> Unit = {},
     onGroupLongClick: (File) -> Unit = {},
 ) {
@@ -221,6 +223,8 @@ fun EntryList(
                     summary = item.summary,
                     onClick = { onGroupClick(item.summary.groupDir) },
                     onLongClick = { onGroupLongClick(item.summary.groupDir) },
+                    isMultiSelectMode = isMultiSelectMode,
+                    isSelected = item.summary.groupDir in selectedGroups,
                     modifier = Modifier.animateItem(
                         placementSpec = placementSpec,
                         fadeOutSpec = fadeOutSpec,
@@ -248,6 +252,8 @@ fun GroupSummaryCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isMultiSelectMode: Boolean = false,
+    isSelected: Boolean = false,
 ) {
     val haptics = rememberPremiumHaptics()
     val typeCounts = summary.memberEntries.groupingBy { it.type }.eachCount()
@@ -271,7 +277,7 @@ fun GroupSummaryCard(
     ) {
         // ── Media carousel preview (omitted when the group has no photos/videos) ──
         if (mediaMembers.isNotEmpty()) {
-            GroupMediaCarousel(members = mediaMembers)
+            GroupMediaCarousel(members = mediaMembers, interactable = !isMultiSelectMode)
         }
 
         Row(
@@ -320,6 +326,10 @@ fun GroupSummaryCard(
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
+            }
+            if (isMultiSelectMode) {
+                MultiSelectBadge(selected = isSelected)
+                Spacer(modifier = Modifier.width(6.dp))
             }
             Text(
                 text = stringResource(R.string.group_member_count, summary.memberEntries.size),
@@ -372,7 +382,10 @@ fun GroupSummaryCard(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GroupMediaCarousel(members: List<MindDumpEntry>) {
+private fun GroupMediaCarousel(
+    members: List<MindDumpEntry>,
+    interactable: Boolean = true,
+) {
     val carouselState = rememberCarouselState { members.size }
 
     HorizontalMultiBrowseCarousel(
@@ -385,7 +398,7 @@ private fun GroupMediaCarousel(members: List<MindDumpEntry>) {
         itemSpacing = 8.dp,
         contentPadding = PaddingValues(horizontal = 16.dp),
     ) { index ->
-        CarouselMediaTile(member = members[index])
+        CarouselMediaTile(member = members[index], interactable = interactable)
     }
 }
 
@@ -394,7 +407,10 @@ private fun GroupMediaCarousel(members: List<MindDumpEntry>) {
  * player on tap. Each tile owns its own player-open state.
  */
 @Composable
-private fun CarouselMediaTile(member: MindDumpEntry) {
+private fun CarouselMediaTile(
+    member: MindDumpEntry,
+    interactable: Boolean = true,
+) {
     val isVideo = member.type == EntryType.VIDEO
     var showPlayer by remember { mutableStateOf(false) }
 
@@ -402,7 +418,13 @@ private fun CarouselMediaTile(member: MindDumpEntry) {
         modifier = Modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(16.dp))
-            .then(if (isVideo) Modifier.combinedClickable { showPlayer = true } else Modifier),
+            .then(
+                if (isVideo && interactable) {
+                    Modifier.combinedClickable { showPlayer = true }
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         coil3.compose.AsyncImage(
@@ -595,55 +617,61 @@ fun EntryItem(
             haptics.perform(HapticPattern.Buildup)
             onLongClick()
         },
-        // In multi-select the whole card toggles selection on tap.
-        enabled = !isMultiSelectMode,
+        // The whole card is always interactive: outside multi-select it opens
+        // the entry, inside multi-select the caller routes taps to selection.
+        enabled = true,
         modifier = modifier,
         typeTint = entry.type.toColor(),
     ) {
-        // ── Header + content ──
-        if (isMultiSelectMode) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, top = 12.dp, end = 12.dp)
-                    .combinedClickable(
-                        onClick = {
-                            haptics.perform(HapticPattern.Tick)
-                            onClick()
-                        },
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onClick() },
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                EntryCardHeader(entry, showLock = false, floating = false)
-            }
-        } else {
-            when (entry.type) {
-                EntryType.PHOTO, EntryType.VIDEO -> {
-                    // Media-first hero: header floats over the edge-to-edge media.
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        val openLong = {
-                            haptics.perform(HapticPattern.Buildup)
-                            onLongClick()
-                        }
-                        if (entry.type == EntryType.PHOTO) {
-                            PhotoEntryContent(entry, onLongClick = openLong)
-                        } else {
-                            VideoEntryContent(entry, onLongClick = openLong)
-                        }
-                        EntryCardHeader(entry, floating = true)
+        // ── Header + content (identical in and out of multi-select) ──
+        // The per-type body always renders so the user can identify what they
+        // are selecting. In multi-select a checkbox overlay reflects state.
+        when (entry.type) {
+            EntryType.PHOTO, EntryType.VIDEO -> {
+                // Media-first hero: header floats over the edge-to-edge media.
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    val openLong = {
+                        haptics.perform(HapticPattern.Buildup)
+                        onLongClick()
+                    }
+                    if (entry.type == EntryType.PHOTO) {
+                        PhotoEntryContent(
+                            entry,
+                            onLongClick = openLong,
+                            interactable = !isMultiSelectMode,
+                        )
+                    } else {
+                        VideoEntryContent(
+                            entry,
+                            onLongClick = openLong,
+                            interactable = !isMultiSelectMode,
+                        )
+                    }
+                    EntryCardHeader(entry, floating = true)
+                    if (isMultiSelectMode) {
+                        MultiSelectBadge(
+                            selected = isSelected,
+                            modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                        )
                     }
                 }
-                else -> {
-                    EntryCardHeader(entry, floating = false)
-                    when (entry.type) {
-                        EntryType.TEXT -> TextEntryContent(entry)
-                        EntryType.RECORDING -> AudioEntryContent(entry)
-                        else -> FileEntryContent(entry)
+            }
+            else -> {
+                EntryCardHeader(entry, floating = false)
+                when (entry.type) {
+                    EntryType.TEXT -> TextEntryContent(entry)
+                    EntryType.RECORDING -> AudioEntryContent(entry)
+                    else -> FileEntryContent(entry)
+                }
+                if (isMultiSelectMode) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        MultiSelectBadge(selected = isSelected)
                     }
                 }
             }
@@ -676,6 +704,44 @@ fun EntryItem(
 // ──────────────────────────────────────────────
 // Header: type icon avatar + relative timestamp
 // ──────────────────────────────────────────────
+
+/**
+ * Selection badge shown over/inside a card while in multi-select. A filled
+ * circle with a check when selected, an outlined circle otherwise. Read-only —
+ * the enclosing card owns the tap that toggles selection.
+ */
+@Composable
+private fun MultiSelectBadge(selected: Boolean, modifier: Modifier = Modifier) {
+    val container = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)
+    }
+    val content = if (selected) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        shape = CircleShape,
+        color = container,
+        contentColor = content,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant,
+        ),
+        modifier = modifier.size(24.dp),
+    ) {
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                modifier = Modifier.padding(4.dp),
+            )
+        }
+    }
+}
 
 @Composable
 private fun EntryCardHeader(
@@ -902,7 +968,11 @@ private fun TextEntryContent(entry: MindDumpEntry) {
 // ──────────────────────────────────────────────
 
 @Composable
-private fun PhotoEntryContent(entry: MindDumpEntry, onLongClick: () -> Unit = {}) {
+private fun PhotoEntryContent(
+    entry: MindDumpEntry,
+    onLongClick: () -> Unit = {},
+    interactable: Boolean = true,
+) {
     MediaHeroClip { clip ->
         Box(
             modifier = Modifier
@@ -911,13 +981,22 @@ private fun PhotoEntryContent(entry: MindDumpEntry, onLongClick: () -> Unit = {}
                 .clip(clip),
             contentAlignment = Alignment.Center,
         ) {
-            ZoomableAsyncImage(
-                model = entry.file,
-                contentDescription = stringResource(R.string.photo),
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                onLongClick = onLongClick,
-            )
+            if (interactable) {
+                ZoomableAsyncImage(
+                    model = entry.file,
+                    contentDescription = stringResource(R.string.photo),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    onLongClick = onLongClick,
+                )
+            } else {
+                coil3.compose.AsyncImage(
+                    model = entry.file,
+                    contentDescription = stringResource(R.string.photo),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
         }
     }
 }
@@ -966,7 +1045,11 @@ private fun VideoPlayOverlay() {
 }
 
 @Composable
-private fun VideoEntryContent(entry: MindDumpEntry, onLongClick: () -> Unit = {}) {
+private fun VideoEntryContent(
+    entry: MindDumpEntry,
+    onLongClick: () -> Unit = {},
+    interactable: Boolean = true,
+) {
     var showPlayer by remember { mutableStateOf(false) }
     MediaHeroClip { clip ->
         Box(
@@ -974,9 +1057,15 @@ private fun VideoEntryContent(entry: MindDumpEntry, onLongClick: () -> Unit = {}
                 .fillMaxWidth()
                 .height(200.dp)
                 .clip(clip)
-                .combinedClickable(
-                    onClick = { showPlayer = true },
-                    onLongClick = onLongClick,
+                .then(
+                    if (interactable) {
+                        Modifier.combinedClickable(
+                            onClick = { showPlayer = true },
+                            onLongClick = onLongClick,
+                        )
+                    } else {
+                        Modifier
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {

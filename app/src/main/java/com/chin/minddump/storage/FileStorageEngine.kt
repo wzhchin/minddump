@@ -256,7 +256,20 @@ class FileStorageEngine(
     }
 
     /**
-     * Rename a group directory's display name portion.
+     * Remove a group directory that is already empty (its members were moved
+     * elsewhere). No-op if the directory does not exist. Throws if it is not
+     * empty — callers must ensure all members moved out first.
+     */
+    fun removeEmptyGroupDir(groupDir: File) {
+        if (!groupDir.exists()) return
+        check(groupDir.listFiles()?.isEmpty() ?: true) {
+            "Refusing to remove non-empty group directory ${groupDir.absolutePath}"
+        }
+        check(groupDir.delete()) { "Failed to delete group directory ${groupDir.absolutePath}" }
+    }
+
+   /**
+    * Rename a group directory's display name portion.
      * Reuses the `[9999-]{ts}-[STATUS-]-g[-{name}]` naming rule from [createGroup],
      * preserving any existing pin prefix and todo status.
      * Returns the renamed directory.

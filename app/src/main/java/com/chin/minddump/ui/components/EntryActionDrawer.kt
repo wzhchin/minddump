@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderDelete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Lock
@@ -63,10 +64,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.R
 import com.chin.minddump.storage.EntryEvent
 import com.chin.minddump.storage.EntryRole
+import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.storage.TodoState
@@ -85,16 +88,17 @@ import java.io.File
 @Composable
 @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 fun EntryActionDrawer(
-    entry: MindDumpEntry,
-    currentSpace: Space,
-    groups: List<File>,
-    onRename: (String?) -> Unit,
-    onDelete: () -> Unit,
-    onMultiSelect: () -> Unit,
-    onMoveToGroup: (File) -> Unit,
-    onCreateGroup: (String?) -> Unit,
-    onMoveToSpace: (Space) -> Unit,
     onDismiss: () -> Unit,
+    entry: MindDumpEntry? = null,
+    groupTarget: File? = null,
+    currentSpace: Space = Space.PUBLIC,
+    groups: List<File> = emptyList(),
+    onRename: (String?) -> Unit = {},
+    onDelete: () -> Unit = {},
+    onMultiSelect: () -> Unit = {},
+    onMoveToGroup: (File) -> Unit = {},
+    onCreateGroup: (String?) -> Unit = {},
+    onMoveToSpace: (Space) -> Unit = {},
     onMoveOutOfGroup: (() -> Unit)? = null,
     onTogglePin: (() -> Unit)? = null,
     onSetStatus: ((TodoState) -> Unit)? = null,
@@ -102,7 +106,13 @@ fun EntryActionDrawer(
     onShare: (() -> Unit)? = null,
     onEditTags: (() -> Unit)? = null,
     onAddEvent: (() -> Unit)? = null,
+    // Group-only callbacks. Used only when [groupTarget] is non-null.
+    onGroupDelete: (() -> Unit)? = null,
+    onGroupDissolve: (() -> Unit)? = null,
 ) {
+    require((entry == null) xor (groupTarget == null)) {
+        "Exactly one of entry / groupTarget must be non-null"
+    }
     val haptics = rememberPremiumHaptics()
     val shapes = LocalExpressiveShapes.current
     val sheetState = rememberBottomSheetState(SheetValue.Hidden)
@@ -110,10 +120,25 @@ fun EntryActionDrawer(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showGroupPicker by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showDissolveConfirm by remember { mutableStateOf(false) }
     var showStatusPicker by remember { mutableStateOf(false) }
     var showCommentDialog by remember { mutableStateOf(false) }
 
-    val isComment = entry.role == EntryRole.COMMENT
+    val isGroup = groupTarget != null
+    val isComment = entry?.role == EntryRole.COMMENT
+
+    // Target-derived presentation values.
+    val groupMeta = groupTarget?.let { FileMetadata.fromFile(it) }
+    val headerText = if (isGroup) {
+        groupTarget!!.name.substringAfter("-g", groupTarget!!.name)
+            .ifBlank { stringResource(R.string.group_unnamed) }
+    } else {
+        entry!!.file.name
+    }
+    val isPinned = if (isGroup) groupMeta?.isPinned == true else entry!!.isPinned
+    val todoState = if (isGroup) (groupMeta?.todoState ?: TodoState.NONE) else entry!!.todoState
+    val entryTags = if (isGroup) emptyList() else entry!!.tags
+    val entryEvents = if (isGroup) emptyList() else entry!!.events
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -126,9 +151,9 @@ fun EntryActionDrawer(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
         ) {
-            // Entry name header
+            // Header: entry file name or group display name.
             Text(
-                text = entry.file.name,
+                text = headerText,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 16.dp, start = 8.dp),
@@ -148,7 +173,7 @@ fun EntryActionDrawer(
             ) {
                 // Pin toggle — comments cannot be pinned. A pinned entry gets a
                 // primary-tint cue so the state reads without a label.
-                if (!isComment && onTogglePin != null) {
+                if (!isComment && !isGroup && onTogglePin != null) {
                     IconButton(onClick = {
                         haptics.perform(HapticPattern.Tick)
                         onTogglePin()
@@ -157,9 +182,9 @@ fun EntryActionDrawer(
                         Icon(
                             Icons.Filled.PushPin,
                             contentDescription = stringResource(
-                                if (entry.isPinned) R.string.unpin else R.string.pin,
+                                if (isPinned) R.string.unpin else R.string.pin,
                             ),
-                            tint = if (entry.isPinned) {
+                            tint = if (isPinned) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 onSurfaceTint
@@ -167,8 +192,27 @@ fun EntryActionDrawer(
                         )
                     }
                 }
-                // Add comment — comments cannot target other comments.
-                if (!isComment && onAddComment != null) {
+                // Group pin toggle — groups CAN be pinned; entry uses the branch above.
+                if (isGroup && onTogglePin != null) {
+                    IconButton(onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onTogglePin()
+                    }) {
+                        Icon(
+                            Icons.Filled.PushPin,
+                            contentDescription = stringResource(
+                                if (isPinned) R.string.unpin else R.string.pin,
+                            ),
+                            tint = if (isPinned) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                onSurfaceTint
+                            },
+                        )
+                    }
+                }
+                // Add comment — comments and groups cannot target comments.
+                if (!isComment && !isGroup && onAddComment != null) {
                     IconButton(onClick = {
                         haptics.perform(HapticPattern.Tick)
                         showCommentDialog = true
@@ -196,7 +240,12 @@ fun EntryActionDrawer(
                 }
                 IconButton(onClick = {
                     haptics.perform(HapticPattern.Tick)
-                    showRenameDialog = true
+                    if (isGroup) {
+                        onRename(null)
+                        onDismiss()
+                    } else {
+                        showRenameDialog = true
+                    }
                 }) {
                     Icon(
                         Icons.Filled.DriveFileRenameOutline,
@@ -215,17 +264,19 @@ fun EntryActionDrawer(
                         tint = onSurfaceTint,
                     )
                 }
-                IconButton(onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    showGroupPicker = true
-                }) {
-                    Icon(
-                        Icons.Filled.Folder,
-                        contentDescription = stringResource(R.string.action_move_to_group),
-                        tint = onSurfaceTint,
-                    )
+                if (!isGroup) {
+                    IconButton(onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        showGroupPicker = true
+                    }) {
+                        Icon(
+                            Icons.Filled.Folder,
+                            contentDescription = stringResource(R.string.action_move_to_group),
+                            tint = onSurfaceTint,
+                        )
+                    }
                 }
-                if (entry.groupPath != null && onMoveOutOfGroup != null) {
+                if (!isGroup && entry!!.groupPath != null && onMoveOutOfGroup != null) {
                     IconButton(onClick = {
                         haptics.perform(HapticPattern.Tick)
                         onMoveOutOfGroup()
@@ -238,23 +289,25 @@ fun EntryActionDrawer(
                         )
                     }
                 }
-                val targetSpace = if (currentSpace == Space.PUBLIC) Space.PRIVATE else Space.PUBLIC
-                val spaceIcon = if (targetSpace == Space.PRIVATE) Icons.Filled.Lock else Icons.Filled.LockOpen
-                val spaceLabelRes = if (targetSpace == Space.PUBLIC) {
-                    R.string.action_move_to_public
-                } else {
-                    R.string.action_move_to_private
-                }
-                IconButton(onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    onMoveToSpace(targetSpace)
-                    onDismiss()
-                }) {
-                    Icon(
-                        spaceIcon,
-                        contentDescription = stringResource(spaceLabelRes),
-                        tint = onSurfaceTint,
-                    )
+                if (!isGroup) {
+                    val targetSpace = if (currentSpace == Space.PUBLIC) Space.PRIVATE else Space.PUBLIC
+                    val spaceIcon = if (targetSpace == Space.PRIVATE) Icons.Filled.Lock else Icons.Filled.LockOpen
+                    val spaceLabelRes = if (targetSpace == Space.PUBLIC) {
+                        R.string.action_move_to_public
+                    } else {
+                        R.string.action_move_to_private
+                    }
+                    IconButton(onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        onMoveToSpace(targetSpace)
+                        onDismiss()
+                    }) {
+                        Icon(
+                            spaceIcon,
+                            contentDescription = stringResource(spaceLabelRes),
+                            tint = onSurfaceTint,
+                        )
+                    }
                 }
             }
 
@@ -263,12 +316,12 @@ fun EntryActionDrawer(
             // Todo status — comments cannot carry a status.
             if (!isComment && onSetStatus != null) {
                 ActionItem(
-                    icon = statusIcon(entry.todoState),
+                    icon = statusIcon(todoState),
                     label = stringResource(R.string.todo_status),
                     trailing = {
-                        if (entry.todoState != TodoState.NONE) {
+                        if (todoState != TodoState.NONE) {
                             Text(
-                                text = statusLabel(entry.todoState),
+                                text = statusLabel(todoState),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -281,14 +334,14 @@ fun EntryActionDrawer(
                 )
             }
             // Tags — open the tag editor sheet; shows existing tags inline.
-            if (onEditTags != null) {
+            if (!isGroup && onEditTags != null) {
                 ActionItem(
                     icon = Icons.Filled.Label,
                     label = stringResource(R.string.tag_add),
                     trailing = {
-                        if (entry.tags.isNotEmpty()) {
+                        if (entryTags.isNotEmpty()) {
                             Text(
-                                text = entry.tags.joinToString(" ") { "#$it" },
+                                text = entryTags.joinToString(" ") { "#$it" },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -302,12 +355,12 @@ fun EntryActionDrawer(
                 )
             }
             // Scheduled event — open the date/time picker; shows the due time.
-            if (onAddEvent != null) {
+            if (!isGroup && onAddEvent != null) {
                 ActionItem(
                     icon = Icons.Filled.Notifications,
                     label = stringResource(R.string.event_add),
                     trailing = {
-                        nextEventDue(entry.events)?.let { due ->
+                        nextEventDue(entryEvents)?.let { due ->
                             Text(
                                 text = formatFriendlyDateTime(due),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -319,6 +372,17 @@ fun EntryActionDrawer(
                         haptics.perform(HapticPattern.Tick)
                         onAddEvent()
                         onDismiss()
+                    },
+                )
+            }
+            // Dissolve — group only. Members move to the parent; folder removed.
+            if (isGroup && onGroupDissolve != null) {
+                ActionItem(
+                    icon = Icons.Filled.FolderDelete,
+                    label = stringResource(R.string.group_dissolve),
+                    onClick = {
+                        haptics.perform(HapticPattern.Tick)
+                        showDissolveConfirm = true
                     },
                 )
             }
@@ -335,7 +399,7 @@ fun EntryActionDrawer(
     }
 
     // Sub-dialogs
-    if (showRenameDialog) {
+    if (showRenameDialog && entry != null) {
         RenameDialog(
             currentName = extractOriginalName(entry),
             onConfirm = { newName ->
@@ -365,20 +429,49 @@ fun EntryActionDrawer(
     }
 
     if (showDeleteConfirm) {
-        DeleteConfirmDialog(
-            entry = entry,
+        if (entry != null) {
+            DeleteConfirmDialog(
+                entry = entry,
+                onConfirm = {
+                    onDelete()
+                    showDeleteConfirm = false
+                    onDismiss()
+                },
+                onDismiss = { showDeleteConfirm = false },
+            )
+        } else {
+            // Group delete: whole tree to trash.
+            ConfirmDialog(
+                title = stringResource(R.string.group_delete_confirm_title),
+                message = stringResource(R.string.group_delete_confirm, headerText),
+                confirmLabel = stringResource(R.string.delete_action),
+                onConfirm = {
+                    onGroupDelete?.invoke()
+                    showDeleteConfirm = false
+                    onDismiss()
+                },
+                onDismiss = { showDeleteConfirm = false },
+            )
+        }
+    }
+
+    if (showDissolveConfirm) {
+        ConfirmDialog(
+            title = stringResource(R.string.group_dissolve),
+            message = stringResource(R.string.group_dissolve_confirm, headerText),
+            confirmLabel = stringResource(R.string.group_dissolve),
             onConfirm = {
-                onDelete()
-                showDeleteConfirm = false
+                onGroupDissolve?.invoke()
+                showDissolveConfirm = false
                 onDismiss()
             },
-            onDismiss = { showDeleteConfirm = false },
+            onDismiss = { showDissolveConfirm = false },
         )
     }
 
     if (showStatusPicker) {
         StatusPickerSheet(
-            current = entry.todoState,
+            current = todoState,
             onSelect = { state ->
                 onSetStatus?.invoke(state)
                 showStatusPicker = false
@@ -486,6 +579,44 @@ private fun ActionItem(
             trailing()
         }
     }
+}
+
+// ──────────────────────────────────────────────
+// Generic confirmation dialog (group delete / dissolve)
+// ──────────────────────────────────────────────
+
+@Composable
+private fun ConfirmDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val haptics = rememberPremiumHaptics()
+    val shapes = LocalExpressiveShapes.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = shapes.cardMedium,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = {
+                haptics.perform(HapticPattern.Thud)
+                onConfirm()
+            }) {
+                Text(confirmLabel, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                haptics.perform(HapticPattern.Cancel)
+                onDismiss()
+            }) {
+                Text("取消")
+            }
+        },
+    )
 }
 
 // ──────────────────────────────────────────────
@@ -686,11 +817,20 @@ fun MultiSelectTopBar(
     onDelete: () -> Unit,
     onDone: () -> Unit,
     onShare: () -> Unit = {},
+    selectedGroupCount: Int = 0,
 ) {
+    val title = if (selectedGroupCount > 0) {
+        stringResource(R.string.multiselect_count_with_groups, selectedCount, selectedGroupCount)
+    } else {
+        selectedCount.toString()
+    }
     androidx.compose.material3.TopAppBar(
-        title = { Text("已选 $selectedCount 项") },
-        navigationIcon = {
-            TextButton(onClick = onDone) { Text("取消") }
+        title = {
+            Text(
+                title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         },
         actions = {
             TextButton(onClick = onShare) { Text(stringResource(R.string.share)) }
@@ -701,119 +841,6 @@ fun MultiSelectTopBar(
             TextButton(onClick = onDone) { Text("完成") }
         },
     )
-}
-
-// ──────────────────────────────────────────────
-// Group Action Sheet (long-press on a group card)
-// ──────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GroupActionSheet(
-    groupName: String,
-    isPinned: Boolean,
-    todoState: TodoState,
-    onRename: () -> Unit,
-    onDissolve: () -> Unit,
-    onDismiss: () -> Unit,
-    onTogglePin: (() -> Unit)? = null,
-    onSetStatus: ((TodoState) -> Unit)? = null,
-    onShare: (() -> Unit)? = null,
-) {
-    val haptics = rememberPremiumHaptics()
-    val shapes = LocalExpressiveShapes.current
-    val sheetState = rememberBottomSheetState(SheetValue.Hidden)
-    var showStatusPicker by remember { mutableStateOf(false) }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = shapes.cardLarge as RoundedCornerShape,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 32.dp),
-        ) {
-            Text(
-                text = groupName,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 16.dp, start = 8.dp),
-            )
-            if (onTogglePin != null) {
-                ActionItem(
-                    icon = Icons.Filled.PushPin,
-                    label = stringResource(if (isPinned) R.string.unpin else R.string.pin),
-                    onClick = {
-                        haptics.perform(HapticPattern.Tick)
-                        onTogglePin()
-                        onDismiss()
-                    },
-                )
-            }
-            if (onSetStatus != null) {
-                ActionItem(
-                    icon = statusIcon(todoState),
-                    label = stringResource(R.string.todo_status),
-                    trailing = {
-                        if (todoState != TodoState.NONE) {
-                            Text(
-                                text = statusLabel(todoState),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    onClick = {
-                        haptics.perform(HapticPattern.Tick)
-                        showStatusPicker = true
-                    },
-                )
-            }
-            ActionItem(
-                icon = Icons.Filled.DriveFileRenameOutline,
-                label = "重命名组",
-                onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    onRename()
-                },
-            )
-            if (onShare != null) {
-                ActionItem(
-                    icon = Icons.Filled.Share,
-                    label = stringResource(R.string.share),
-                    onClick = {
-                        haptics.perform(HapticPattern.Tick)
-                        onShare()
-                        onDismiss()
-                    },
-                )
-            }
-            ActionItem(
-                icon = Icons.Filled.Delete,
-                label = "解散分组",
-                isDestructive = true,
-                onClick = {
-                    haptics.perform(HapticPattern.Tick)
-                    onDissolve()
-                },
-            )
-        }
-    }
-
-    if (showStatusPicker) {
-        StatusPickerSheet(
-            current = todoState,
-            onSelect = { state ->
-                onSetStatus?.invoke(state)
-                showStatusPicker = false
-                onDismiss()
-            },
-            onDismiss = { showStatusPicker = false },
-        )
-    }
 }
 
 // ──────────────────────────────────────────────

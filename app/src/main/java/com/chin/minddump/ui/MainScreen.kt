@@ -79,7 +79,6 @@ import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.ui.components.BiometricGate
 import com.chin.minddump.ui.components.EntryActionDrawer
-import com.chin.minddump.ui.components.GroupActionSheet
 import com.chin.minddump.ui.components.GroupPickerSheet
 import com.chin.minddump.ui.components.MigrationDialog
 import com.chin.minddump.ui.components.MultiSelectTopBar
@@ -159,14 +158,21 @@ fun MainScreen(
         }
     }
 
-    // Intercept the system back gesture while search is open so it collapses
-    // the search field instead of exiting the app.
-    BackHandler(enabled = searchExpanded) {
-        viewModel.clearSearch()
-        searchExpanded = false
+   // Intercept the system back gesture while search is open so it collapses
+   // the search field instead of exiting the app.
+   BackHandler(enabled = searchExpanded) {
+       viewModel.clearSearch()
+       searchExpanded = false
+   }
+
+    // Intercept back while in multi-select so it exits selection instead of
+    // leaving the screen. Precedence: multi-select > search (both are one-shot
+    // intercepts; multi-select is gated to take priority when active).
+    BackHandler(enabled = uiState.isMultiSelectMode) {
+        viewModel.exitMultiSelectMode()
     }
 
-    // Dispatch the one-shot outbound-share result: open the Share sheet on a
+   // Dispatch the one-shot outbound-share result: open the Share sheet on a
     // resolved payload, or surface a locked-session message.
     LaunchedEffect(uiState.shareResult) {
         val result = uiState.shareResult ?: return@LaunchedEffect
@@ -301,6 +307,7 @@ fun MainScreen(
                     if (uiState.isMultiSelectMode) {
                         MultiSelectTopBar(
                             selectedCount = uiState.selectedEntries.size,
+                            selectedGroupCount = uiState.selectedGroups.size,
                             onMergeToGroup = { viewModel.showGroupMergePicker() },
                             onDelete = { viewModel.deleteSelectedEntries() },
                             onDone = { viewModel.exitMultiSelectMode() },
@@ -501,13 +508,22 @@ fun MainScreen(
                             isMultiSelectMode = uiState.isMultiSelectMode,
                             selectedEntries = uiState.selectedEntries,
                             groups = scopeGroups,
+                            selectedGroups = uiState.selectedGroups,
                             onGroupClick = { groupDir ->
-                                // Drill in: the route entry owns setCurrentGroupDir.
-                                onNavigateToGroupDetail(groupDir.absolutePath)
+                                if (uiState.isMultiSelectMode) {
+                                    viewModel.toggleGroupSelection(groupDir)
+                                } else {
+                                    // Drill in: the route entry owns setCurrentGroupDir.
+                                    onNavigateToGroupDetail(groupDir.absolutePath)
+                                }
                             },
                             onGroupLongClick = { groupDir ->
                                 haptics.perform(HapticPattern.Buildup)
-                                viewModel.selectGroupForMenu(groupDir)
+                                if (uiState.isMultiSelectMode) {
+                                    viewModel.toggleGroupSelection(groupDir)
+                                } else {
+                                    viewModel.selectGroupForMenu(groupDir)
+                                }
                             },
                         )
                     }
@@ -589,31 +605,26 @@ fun MainScreen(
                 )
             }
 
-            // Long-press group action menu
+            // Long-press group action drawer — the same EntryActionDrawer used for
+            // entries, driven by group-targeted callbacks. Entry-only rows are
+            // hidden by the drawer; the group gains a 解散 (dissolve) action.
             uiState.groupMenuFor?.let { groupDir ->
-                val groupMeta = FileMetadata.fromFile(groupDir)
-                GroupActionSheet(
-                    groupName = groupDir.name.substringAfter("-g", groupDir.name),
-                    isPinned = groupMeta?.isPinned == true,
-                    todoState = groupMeta?.todoState ?: TodoState.NONE,
+                EntryActionDrawer(
+                    onDismiss = { viewModel.dismissGroupMenu() },
+                    groupTarget = groupDir,
+                    onTogglePin = { viewModel.toggleGroupPinned(groupDir) },
+                    onSetStatus = { state -> viewModel.setGroupStatus(groupDir, state) },
                     onRename = {
                         viewModel.dismissGroupMenu()
                         viewModel.requestRenameGroup(groupDir)
                     },
-                    onDissolve = {
+                    onShare = { viewModel.shareGroup(groupDir) },
+                    onMultiSelect = {
                         viewModel.dismissGroupMenu()
-                        viewModel.dissolveGroup(groupDir)
+                        viewModel.enterMultiSelectModeWithGroup(groupDir)
                     },
-                    onTogglePin = {
-                        viewModel.toggleGroupPinned(groupDir)
-                    },
-                    onSetStatus = { state ->
-                        viewModel.setGroupStatus(groupDir, state)
-                    },
-                    onShare = {
-                        viewModel.shareGroup(groupDir)
-                    },
-                    onDismiss = { viewModel.dismissGroupMenu() },
+                    onGroupDissolve = { viewModel.dissolveGroup(groupDir) },
+                    onGroupDelete = { viewModel.deleteGroup(groupDir) },
                 )
             }
 

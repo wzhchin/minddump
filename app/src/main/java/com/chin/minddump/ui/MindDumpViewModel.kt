@@ -110,6 +110,10 @@ data class MindDumpUiState(
     // Multi-select
     val isMultiSelectMode: Boolean = false,
     val selectedEntries: Set<MindDumpEntry> = emptySet(),
+    // Multi-select: whole group directories selected for re-clustering. Tracked
+    // separately from [selectedEntries] so merge can expand their members and
+    // dissolve emptied sources (see mergeSelectedInto*).
+    val selectedGroups: Set<File> = emptySet(),
     // Grouped entries (files + their comments)
     val groupedEntries: List<GroupedEntry> = emptyList(),
     // Group directories in the current month, with members for rendering
@@ -956,6 +960,20 @@ class MindDumpViewModel
         fun dissolveGroup(groupDir: File) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.dissolveGroup(groupDir, _uiState.value.currentSpace)
+                _uiState.update { it.copy(groupMenuFor = null) }
+                refreshForCurrentScope()
+            }
+        }
+
+        /**
+         * Soft-delete a whole group tree: the group and its members move into
+         * `.trash/` together and restore together. Distinct from [dissolveGroup],
+         * which scatters members back out and removes only the empty folder.
+         */
+        fun deleteGroup(groupDir: File) {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.deleteGroup(groupDir, _uiState.value.currentSpace)
+                _uiState.update { it.copy(groupMenuFor = null) }
                 refreshForCurrentScope()
             }
         }
@@ -998,6 +1016,31 @@ class MindDumpViewModel
             }
         }
 
+        /** Enter multi-select with a whole group pre-selected (re-cluster entry). */
+        fun enterMultiSelectModeWithGroup(groupDir: File) {
+            _uiState.update {
+                it.copy(
+                    isMultiSelectMode = true,
+                    selectedGroups = setOf(groupDir),
+                    selectedEntries = emptySet(),
+                    selectedEntryForAction = null,
+                )
+            }
+        }
+
+        /** Toggle a whole group in/out of the multi-select selection. */
+        fun toggleGroupSelection(groupDir: File) {
+            _uiState.update { state ->
+                val current = state.selectedGroups
+                val updated = if (groupDir in current) current - groupDir else current + groupDir
+                val anySelected = updated.isNotEmpty() || state.selectedEntries.isNotEmpty()
+                state.copy(
+                    selectedGroups = updated,
+                    isMultiSelectMode = anySelected,
+                )
+            }
+        }
+
         fun toggleEntrySelection(entry: MindDumpEntry) {
             _uiState.update { state ->
                 val current = state.selectedEntries
@@ -1006,9 +1049,10 @@ class MindDumpViewModel
                 } else {
                     current + entry
                 }
+                val anySelected = updated.isNotEmpty() || state.selectedGroups.isNotEmpty()
                 state.copy(
                     selectedEntries = updated,
-                    isMultiSelectMode = updated.isNotEmpty(),
+                    isMultiSelectMode = anySelected,
                 )
             }
         }
@@ -1018,6 +1062,7 @@ class MindDumpViewModel
                 it.copy(
                     isMultiSelectMode = false,
                     selectedEntries = emptySet(),
+                    selectedGroups = emptySet(),
                     showGroupMergePicker = false,
                 )
             }
@@ -1032,15 +1077,50 @@ class MindDumpViewModel
             _uiState.update { it.copy(showGroupMergePicker = false) }
         }
 
-        /** Merge all selected entries into an existing group. */
+        /**
+         * After a re-cluster merge, remove any source group directory that is
+         * now empty on disk. Non-empty sources (e.g. a move that partially
+         * failed) and the merge target are left intact. Best-effort: a failed
+         * removal is logged, not propagated, so the merge still completes.
+         */
+        private suspend fun dissolveEmptiedSourceGroups(sourceGroups: Set<File>) {
+            val space = _uiState.value.currentSpace
+            sourceGroups.forEach { dir ->
+                if (!dir.exists()) return@forEach
+                val remaining = dir.listFiles()?.toList() ?: emptyList()
+                if (remaining.isEmpty()) {
+                    runCatching { repository.removeEmptyGroupDir(dir, space) }
+                        .onFailure { Timber.w(it, "Failed to dissolve emptied group %s", dir.absolutePath) }
+                }
+            }
+        }
+
+        /**
+         * Merge the current selection (loose entries + members of selected
+         * groups) into an existing [groupDir]. Source groups that become empty
+         * (and are not the target) are dissolved.
+         */
         fun mergeSelectedIntoGroup(groupDir: File) {
-            val entries = _uiState.value.selectedEntries.toList()
+            val state = _uiState.value
+            val entries = state.selectedEntries.toList()
+            val sourceGroups = state.selectedGroups
             viewModelScope.launch(Dispatchers.IO) {
-                repository.moveEntriesToGroup(entries, groupDir)
+                val membersByGroup = sourceGroups.associateWith { repository.getGroupMemberEntries(it) }
+                // Target-as-source guard: never move the target group's own
+                // members to itself, and never dissolve the target.
+                val toMove = entries + membersByGroup
+                    .filterKeys { it.absolutePath != groupDir.absolutePath }
+                    .values
+                    .flatten()
+                if (toMove.isNotEmpty()) {
+                    repository.moveEntriesToGroup(toMove, groupDir)
+                }
+                dissolveEmptiedSourceGroups(sourceGroups - groupDir)
                 _uiState.update {
                     it.copy(
                         isMultiSelectMode = false,
                         selectedEntries = emptySet(),
+                        selectedGroups = emptySet(),
                         showGroupMergePicker = false,
                     )
                 }
@@ -1048,20 +1128,32 @@ class MindDumpViewModel
             }
         }
 
-        /** Create a new group and merge all selected entries into it. */
+        /**
+         * Create a new group and merge the current selection (loose entries +
+         * members of selected groups) into it. All selected source groups are
+         * dissolved once their members have moved into the new group.
+         */
         fun mergeSelectedIntoNewGroup(name: String?) {
-            val entries = _uiState.value.selectedEntries.toList()
+            val state = _uiState.value
+            val entries = state.selectedEntries.toList()
+            val sourceGroups = state.selectedGroups
             viewModelScope.launch(Dispatchers.IO) {
-                repository.createAndMoveGroupForEntries(
-                    entries,
-                    _uiState.value.currentSpace,
+                val membersByGroup = sourceGroups.associateWith { repository.getGroupMemberEntries(it) }
+                val toMove = entries + membersByGroup.values.flatten()
+                val target = repository.createGroup(
+                    state.currentSpace,
                     name,
-                    _uiState.value.currentGroupDir,
+                    state.currentGroupDir,
                 )
+                if (toMove.isNotEmpty()) {
+                    repository.moveEntriesToGroup(toMove, target)
+                }
+                dissolveEmptiedSourceGroups(sourceGroups)
                 _uiState.update {
                     it.copy(
                         isMultiSelectMode = false,
                         selectedEntries = emptySet(),
+                        selectedGroups = emptySet(),
                         showGroupMergePicker = false,
                     )
                 }
