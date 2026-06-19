@@ -130,7 +130,9 @@ fun EntryActionDrawer(
     // Target-derived presentation values.
     val groupMeta = groupTarget?.let { FileMetadata.fromFile(it) }
     val headerText = if (isGroup) {
-        groupTarget!!.name.substringAfter("-g", groupTarget!!.name)
+        groupTarget!!
+            .name
+            .substringAfter("-g", groupTarget!!.name)
             .ifBlank { stringResource(R.string.group_unnamed) }
     } else {
         entry!!.file.name

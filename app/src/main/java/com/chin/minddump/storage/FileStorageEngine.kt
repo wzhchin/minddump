@@ -268,8 +268,8 @@ class FileStorageEngine(
         check(groupDir.delete()) { "Failed to delete group directory ${groupDir.absolutePath}" }
     }
 
-   /**
-    * Rename a group directory's display name portion.
+    /**
+     * Rename a group directory's display name portion.
      * Reuses the `[9999-]{ts}-[STATUS-]-g[-{name}]` naming rule from [createGroup],
      * preserving any existing pin prefix and todo status.
      * Returns the renamed directory.

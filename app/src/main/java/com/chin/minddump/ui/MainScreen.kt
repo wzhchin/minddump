@@ -70,11 +70,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.R
-import com.chin.minddump.storage.EntryEvent
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.FileMetadata
-import com.chin.minddump.storage.TodoState
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.ui.components.BiometricGate
@@ -158,12 +156,12 @@ fun MainScreen(
         }
     }
 
-   // Intercept the system back gesture while search is open so it collapses
-   // the search field instead of exiting the app.
-   BackHandler(enabled = searchExpanded) {
-       viewModel.clearSearch()
-       searchExpanded = false
-   }
+    // Intercept the system back gesture while search is open so it collapses
+    // the search field instead of exiting the app.
+    BackHandler(enabled = searchExpanded) {
+        viewModel.clearSearch()
+        searchExpanded = false
+    }
 
     // Intercept back while in multi-select so it exits selection instead of
     // leaving the screen. Precedence: multi-select > search (both are one-shot
@@ -172,7 +170,7 @@ fun MainScreen(
         viewModel.exitMultiSelectMode()
     }
 
-   // Dispatch the one-shot outbound-share result: open the Share sheet on a
+    // Dispatch the one-shot outbound-share result: open the Share sheet on a
     // resolved payload, or surface a locked-session message.
     LaunchedEffect(uiState.shareResult) {
         val result = uiState.shareResult ?: return@LaunchedEffect

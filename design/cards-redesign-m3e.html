@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MindDump · Card Redesign — Material 3 Expressive (restrained)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Manrope: rounded grotesque, the closest web analog to Google Sans Flex
+     (ROND=100). Single typeface, M3-style hierarchy via weight/size/tracking. -->
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+/* ════════════════════════════════════════════════════════════════
+   MINDDROP — Material 3 Expressive card system  ·  RESTRAINED
+   ────────────────────────────────────────────────────────────────
+   Faithful to the app's real tokens:
+     · seed #8B418F → M3 tonal purple palette (light + dark)
+     · Google Sans Flex → Manrope (rounded grotesque analog)
+     · ExpressiveShapes.entryCard → 20/20/20/6 asymmetric corner
+     · type color → M3 container tones (primary/secondary/tertiary…)
+     · unified 3-zone skeleton (head · body · foot) kept verbatim
+
+   "克制": no paper grain, no cinnabar, no stamps, no serif. Only tonal
+   surfaces, one accent, hairlines, and soft elevation doing the work.
+   ════════════════════════════════════════════════════════════════ */
+
+:root{
+  /* ── M3 light palette, seed #8B418F ── */
+  --primary:#6E4E8E;  --on-primary:#FFFFFF;
+  --primary-container:#EADDFF; --on-primary-container:#250E47;
+  --secondary:#645A70; --secondary-container:#E8DEF0; --on-secondary-container:#201829;
+  --tertiary:#7E5642; --tertiary-container:#FCDCC6; --on-tertiary-container:#311205;
+  --error:#984061;
+
+  --surface:#FCF8FB;
+  --surface-container-low:#F6EFF4;
+  --surface-container:#F1EAf0;
+  --surface-container-high:#EBE3EC;
+  --surface-container-highest:#E5DDE8;
+
+  --on-surface:#1B1A20;
+  --on-surface-variant:#4B4555;
+  --outline:#7E7587;
+  --outline-variant:#CCC4D2;
+
+  /* type accents — map straight to M3 tones (matches app) */
+  --t-text:var(--primary);
+  --t-photo:var(--tertiary);
+  --t-video:#8A5E72;                 /* secondary ⇄ tertiary blend */
+  --t-audio:var(--secondary);
+  --t-file:var(--on-surface-variant);
+  --t-group:var(--primary);
+
+  /* status tones */
+  --s-todo:var(--tertiary);          --s-todo-bg:var(--tertiary-container);
+  --s-doing:var(--primary);          --s-doing-bg:var(--primary-container);
+  --s-wait:var(--secondary);         --s-wait-bg:var(--secondary-container);
+  --s-done:#5B6356;                  --s-done-bg:#E0E5DC;
+  --s-cancel:#8A7E82;                --s-cancel-bg:#ECE3E8;
+
+  /* scaffold */
+  --inset:16px;
+  --head-h:48px;
+  --rhythm:12px;
+  --radius:20px;          /* asymmetric: 20 20 20 6 */
+  --font:"Manrope","Noto Sans SC",system-ui,sans-serif;
+}
+
+body.dark{
+  --primary:#D7BAFF;  --on-primary:#3C1B66;
+  --primary-container:#4A2D6E; --on-primary-container:#EADDFF;
+  --secondary:#CDC2D6; --secondary-container:#4B4356; --on-secondary-container:#E8DEF0;
+  --tertiary:#EDBC9F; --tertiary-container:#633E2B; --on-tertiary-container:#FCDCC6;
+
+  --surface:#141218;
+  --surface-container-low:#1C191F;
+  --surface-container:#201D24;
+  --surface-container-high:#2A2630;
+  --surface-container-highest:#35313B;
+
+  --on-surface:#E7E1EA;
+  --on-surface-variant:#CBC4D2;
+  --outline:#958DA0;
+  --outline-variant:#4B4555;
+
+  --s-done:#A6C9A2; --s-done-bg:#2C352B;
+  --s-cancel:#C7BBC0; --s-cancel-bg:#3A343B;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;}
+body{
+  background:var(--surface); color:var(--on-surface); font-family:var(--font);
+  -webkit-font-smoothing:antialiased; min-height:100vh; font-weight:500;
+  background-image:
+    radial-gradient(900px 500px at 90% -10%, color-mix(in srgb,var(--primary) 6%, transparent), transparent 60%);
+}
+
+/* ════════ frame ════════ */
+.wrap{max-width:440px;margin:0 auto;padding:18px 16px 120px;}
+.masthead{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:4px 2px 16px;margin-bottom:8px;
+}
+.masthead .title{display:flex;align-items:center;gap:10px;}
+.logo{
+  width:34px;height:34px;border-radius:11px;flex:none;
+  background:linear-gradient(145deg,var(--primary),color-mix(in srgb,var(--primary) 60%,#000 0%));
+  display:grid;place-items:center;color:#fff;font-weight:800;font-size:16px;
+  box-shadow:0 2px 8px color-mix(in srgb,var(--primary) 40%,transparent);
+}
+.masthead h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.2px;}
+.masthead .sub{font-size:11px;color:var(--on-surface-variant);font-weight:500;margin-top:1px;}
+.masthead .ic{
+  width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;
+  background:var(--surface-container-high);color:var(--on-surface-variant);
+  display:grid;place-items:center;
+}
+.masthead .ic svg{width:20px;height:20px;}
+
+.section-label{
+  font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--on-surface-variant);margin:22px 2px 10px;display:flex;align-items:center;gap:10px;
+}
+.section-label::after{content:"";flex:1;height:1px;background:var(--outline-variant);opacity:.6;}
+
+.swatches{display:flex;gap:6px;flex-wrap:wrap;margin:4px 2px 4px;}
+.swatches i{width:20px;height:20px;border-radius:6px;}
+
+/* ════════════════════════════════════════════════════════════════
+   THE CARD — tonal surface, asymmetric corner, hairline, soft elevation
+   ════════════════════════════════════════════════════════════════ */
+.card{
+  position:relative;display:flex;flex-direction:column;
+  background:var(--surface-container-low);
+  border:1px solid color-mix(in srgb,var(--outline-variant) 55%,transparent);
+  border-radius:var(--radius) var(--radius) var(--radius) 7px;
+  margin-bottom:12px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(20,15,25,.04),0 4px 14px -10px rgba(20,15,25,.18);
+}
+/* faint type-tint wash, exactly like the app's EntryCard.typeTint */
+.card::after{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:var(--tab,var(--primary));opacity:.045;
+}
+.card>*{position:relative;z-index:1;}
+
+/* ── HEAD (identical everywhere) ── */
+.card__head{
+  flex:none;min-height:var(--head-h);
+  display:flex;align-items:center;gap:10px;
+  padding:14px var(--inset) 0;
+}
+.dateline{display:inline-flex;align-items:center;gap:9px;min-width:0;}
+.typemark{width:8px;height:8px;border-radius:50%;flex:none;background:var(--tab);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--tab) 14%,transparent);}
+.kind{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--tab);text-transform:uppercase;}
+.dot-sep{width:3px;height:3px;border-radius:50%;background:var(--outline-variant);}
+.time{font-size:12px;font-weight:500;color:var(--on-surface-variant);}
+.cluster{margin-left:auto;display:inline-flex;align-items:center;gap:6px;}
+
+.pin{
+  display:inline-grid;place-items:center;width:28px;height:28px;border-radius:9px;flex:none;
+  background:var(--primary-container);color:var(--on-primary-container);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 16%,transparent);
+}
+.pin svg{width:15px;height:15px;}
+
+.pill{
+  font-size:11px;font-weight:600;letter-spacing:.02em;
+  padding:4px 10px;border-radius:8px;
+  background:var(--pill-bg,var(--surface-container-high));color:var(--pill-fg,var(--on-surface-variant));
+}
+.pill.todo{--pill-bg:var(--s-todo-bg);--pill-fg:var(--s-todo);}
+.pill.doing{--pill-bg:var(--s-doing-bg);--pill-fg:var(--s-doing);}
+.pill.wait{--pill-bg:var(--s-wait-bg);--pill-fg:var(--s-wait);}
+.pill.done{--pill-bg:var(--s-done-bg);--pill-fg:var(--s-done);}
+.pill.cancel{--pill-bg:var(--s-cancel-bg);--pill-fg:var(--s-cancel);text-decoration:line-through;}
+.lock{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:7px;background:var(--surface-container-high);color:var(--on-surface-variant);}
+.lock svg{width:14px;height:14px;}
+
+/* ── BODY ── */
+.card__body{padding:6px var(--inset) var(--rhythm);}
+.card__body.is-media{padding:6px 0 0;}
+
+/* text */
+.prose{font-size:15px;line-height:1.5;font-weight:500;color:var(--on-surface);letter-spacing:.003em;}
+.prose.clamp{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;}
+.expand{margin-top:8px;font-size:12px;font-weight:700;color:var(--primary);border:none;background:none;padding:0;cursor:pointer;}
+
+/* media */
+.media{position:relative;height:200px;background:var(--surface-container-high);overflow:hidden;
+  border-radius:14px 14px 0 0;}
+.media img{width:100%;height:100%;object-fit:cover;display:block;}
+.play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:50%;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(4px);
+  display:grid;place-items:center;color:var(--on-surface);
+  box-shadow:0 4px 16px rgba(20,15,25,.22);}
+.play svg{width:26px;height:26px;margin-left:2px;}
+.video-dur{position:absolute;right:10px;bottom:10px;font-size:11px;font-weight:600;color:#fff;
+  background:rgba(20,15,25,.6);padding:3px 8px;border-radius:6px;}
+
+/* audio */
+.wave{display:flex;align-items:center;gap:2px;height:46px;}
+.wave i{flex:1;background:var(--t-audio);border-radius:3px;min-width:2px;opacity:.85;}
+.aio-bar{margin-top:12px;display:flex;align-items:center;gap:14px;}
+.play-mini{width:44px;height:44px;border-radius:50%;flex:none;border:none;cursor:pointer;
+  background:var(--secondary-container);color:var(--on-secondary-container);display:grid;place-items:center;
+  box-shadow:0 2px 8px color-mix(in srgb,var(--secondary) 24%,transparent);}
+.play-mini svg{width:18px;height:18px;margin-left:1px;}
+.aio-meta{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.aio-meta .name{font-size:13px;font-weight:600;color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.aio-meta .len{font-size:12px;color:var(--on-surface-variant);}
+
+/* file */
+.doc{display:flex;align-items:center;gap:14px;padding:14px;border-radius:14px;
+  background:var(--surface-container);border:1px solid color-mix(in srgb,var(--outline-variant) 50%,transparent);}
+.fold{width:40px;height:50px;flex:none;border-radius:9px;background:var(--surface-container-high);
+  display:grid;place-items:center;color:var(--t-file);}
+.fold svg{width:22px;height:22px;}
+.doc-name{font-size:14px;font-weight:600;color:var(--on-surface);}
+.doc-size{font-size:12px;color:var(--on-surface-variant);margin-top:2px;}
+
+/* group */
+.gtitle{font-size:19px;font-weight:700;letter-spacing:-.2px;margin:0;color:var(--on-surface);}
+.gbyline{margin-top:4px;font-size:12px;color:var(--on-surface-variant);}
+.strips{display:flex;gap:6px;margin-top:12px;}
+.strips .s{height:88px;flex:1;border-radius:12px;overflow:hidden;background:var(--surface-container-high);position:relative;min-width:0;}
+.strips .s img{width:100%;height:100%;object-fit:cover;}
+.strips .s.vid::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(4px);}
+
+/* ── FOOT (identical everywhere) ── */
+.card__foot{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  padding:0 var(--inset) calc(var(--inset));padding-top:2px;}
+.card__body.is-media + .card__foot{padding-top:var(--rhythm);}
+
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  padding:5px 11px;border-radius:9px;}
+.tag{background:var(--secondary-container);color:var(--on-secondary-container);}
+.rem{background:var(--primary-container);color:var(--on-primary-container);}
+.rem svg{width:13px;height:13px;}
+.rem.fired{background:var(--surface-container-high);color:var(--on-surface-variant);}
+.cmt{background:var(--surface-container-high);color:var(--primary);border:none;cursor:pointer;}
+.cmt svg{width:14px;height:14px;}
+.count{background:color-mix(in srgb,var(--ci,var(--on-surface-variant)) 14%,transparent);color:var(--on-surface-variant);}
+.count i{width:8px;height:8px;border-radius:2px;background:var(--ci,var(--on-surface-variant));}
+
+.thread{display:none;flex-basis:100%;margin-top:4px;}
+.thread.open{display:block;}
+.thread .c{display:flex;gap:10px;padding:9px 0;border-top:1px solid color-mix(in srgb,var(--outline-variant) 50%,transparent);}
+.thread .ct{font-size:11px;color:var(--on-surface-variant);flex:none;width:70px;}
+.thread .cx{font-size:13px;color:var(--on-surface-variant);line-height:1.45;}
+
+/* ════════ multi-select ════════ */
+.check{flex:none;display:none;place-items:center;width:22px;height:22px;border-radius:7px;
+  background:transparent;border:2px solid var(--outline);}
+.card.has-check .dateline .check{display:grid;}
+.card.has-check .dateline .typemark{display:none;}
+.check.on{background:var(--primary);border-color:var(--primary);}
+.check.on::after{content:"";width:10px;height:6px;border-left:2px solid var(--on-primary);border-bottom:2px solid var(--on-primary);
+  transform:translateY(-1px) rotate(-45deg);}
+.card.sel{outline:2px solid var(--primary);outline-offset:-1px;}
+
+/* entrance */
+@keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+.card{animation:rise .45s cubic-bezier(.2,.7,.2,1) both;}
+.card:nth-child(1){animation-delay:.02s}.card:nth-child(2){animation-delay:.07s}.card:nth-child(3){animation-delay:.12s}
+.card:nth-child(4){animation-delay:.17s}.card:nth-child(5){animation-delay:.22s}.card:nth-child(6){animation-delay:.27s}.card:nth-child(7){animation-delay:.32s}
+@media (prefers-reduced-motion:reduce){.card{animation:none;}}
+
+/* ════════ toolbar ════════ */
+.toolbar{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:center;gap:10px;
+  padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  background:linear-gradient(0deg,var(--surface) 72%,transparent);z-index:20;}
+.toolbar .tg{font-size:12px;font-weight:700;letter-spacing:.02em;cursor:pointer;
+  padding:12px 20px;border-radius:999px;border:none;background:var(--surface-container-high);color:var(--on-surface);
+  display:inline-flex;align-items:center;gap:7px;}
+.toolbar .tg svg{width:16px;height:16px;}
+.toolbar .tg.primary{background:var(--primary);color:var(--on-primary);}
+.toolbar .tg.active{box-shadow:inset 0 0 0 2px var(--primary);}
+
+/* reusable svg color */
+svg{stroke:currentColor;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- masthead -->
+  <div class="masthead">
+    <div class="title">
+      <div class="logo">心</div>
+      <div><h1>MindDump</h1><div class="sub">Material 3 Expressive · v0.3</div></div>
+    </div>
+    <button class="ic" id="themeBtn" title="切换主题">
+      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
+    </button>
+  </div>
+
+  <div class="swatches">
+    <i style="background:var(--primary)" title="primary"></i>
+    <i style="background:var(--primary-container)"></i>
+    <i style="background:var(--secondary-container)"></i>
+    <i style="background:var(--tertiary-container)"></i>
+    <i style="background:var(--surface-container-low)"></i>
+    <i style="background:var(--surface-container)"></i>
+    <i style="background:var(--surface-container-highest)"></i>
+  </div>
+
+  <!-- ══ TEXT ══ -->
+  <div class="section-label">Text · 笔记</div>
+
+  <article class="card" style="--tab:var(--t-text)">
+    <div class="card__head">
+      <div class="dateline"><span class="typemark"></span><span class="kind">Note</span><span class="dot-sep"></span><span class="time">刚刚</span></div>
+      <div class="cluster"><span class="pill doing">Doing</span></div>
+    </div>
+    <div class="card__body"><p class="prose">凌晨三点的灵感总是最危险——它们看起来无比清晰，但天亮后才发现其实毫无逻辑。不过我还是想记下来，万一呢。</p></div>
+    <div class="card__foot">
+      <span class="chip tag">#灵感</span><span class="chip tag">#深夜</span>
+      <span class="chip rem"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/></svg>明早 09:00</span>
+    </div>
+  </article>
+
+  <article class="card" style="--tab:var(--t-text)">
+    <div class="card__head">
+      <div class="dateline"><span class="typemark"></span><span class="kind">Note</span><span class="dot-sep"></span><span class="time">昨天 22:14</span></div>
+      <div class="cluster">
+        <span class="pin"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 4l4 4-3 1-3 3v5l-2-2-4 4-1-1 4-4-2-2h5l3-3z"/></svg></span>
+        <span class="pill done">Done</span>
+        <span class="lock"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+      </div>
+    </div>
+    <div class="card__body">
+      <p class="prose clamp">这是一个很长的笔记条目，用来演示正文折叠。M3 Expressive 卡片用 Manrope 圆体承载正文，行距宽松、字重适中，追求的是克制的可读性——而不是装饰感。当你写下足够多的字，超过四行之后就会出现「展开」入口，点击可以平滑展开或收起，而不会误触打开整条记录。整体配色来自同一颗种子紫的 M3 tonal 调色板，容器色之间只有细微的明度差。</p>
+      <button class="expand">展开 · expand</button>
+    </div>
+    <div class="card__foot">
+      <span class="chip tag">#周计划</span><span class="chip tag">#回顾</span>
+      <button class="chip cmt"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-8.4 8.5 8.5 8.5 0 0 1-3.7-.9L3 21l1.9-5.4A8.5 8.5 0 0 1 12.6 3 8.4 8.4 0 0 1 21 11.5z"/></svg>3 条附注</button>
+      <div class="thread open">
+        <div class="c"><span class="ct">今天 11:02</span><span class="cx">补充：第三点其实可以合并进第一点。</span></div>
+        <div class="c"><span class="ct">今天 14:30</span><span class="cx">已改，确认无误。</span></div>
+      </div>
+    </div>
+  </article>
+
+  <!-- ══ PHOTO ══ -->
+  <div class="section-label">Photo · 照片</div>
+
+  <article class="card" style="--tab:var(--t-photo)">
+    <div class="card__head">
+      <div class="dateline"><span class="typemark"></span><span class="kind">Photo</span><span class="dot-sep"></span><span class="time">今天 07:42</span></div>
+      <div class="cluster"><span class="pin"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 4l4 4-3 1-3 3v5l-2-2-4 4-1-1 4-4-2-2h5l3-3z"/></svg></span></div>
+    </div>
+    <div class="card__body is-media">
+      <div class="media"><img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=70" alt=""></div>
+    </div>
+    <div class="card__foot">
+      <span class="chip tag">#通勤</span><span class="chip tag">#清晨</span>
+      <span class="chip rem"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/></svg>明早提醒</span>
+    </div>
+  </article>
+
+  <!-- ══ VIDEO ══ -->
+  <div class="section-label">Video · 视频</div>
+
+  <article class="card" style="--tab:var(--t-video)">
+    <div class="card__head">
+      <div class="dateline"><span class="typemark"></span><span class="kind">Video</span><span class="dot-sep"></span><span class="time">昨天 18:30</span></div>
+      <div class="cluster"></div>
+    </div>
+    <div class="card__body is-media">
+      <div class="media">
+        <img src="https://images.unsplash.com/photo-1535025183041-0991a977e25b?auto=format&fit=crop&w=800&q=70" alt="">
+        <div class="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>
+        <span class="video-dur">0:42</span>
+      </div>
+    </div>
+    <div class="card__foot"><span class="chip tag">#散步</span><span class="chip tag">#日落</span></div>
+  </article>
+
+  <!-- ══ RECORDING ══ -->
+  <div class="section-label">Recording · 录音</div>
+
+  <article class="card" style="--tab:var(--t-audio)">
+    <div class="card__head">
+      <div class="dateline"><span class="typemark"></span><span class="kind">Recording</span><span class="dot-sep"></span><span class="time">2 小时前</span></div>
+      <div class="cluster"><span class="pill wait">Wait</span></div>
+    </div>
+    <div class="card__body">
+      <div class="wave" data-wave></div>
+      <div class="aio-bar">
+        <button class="play-mini"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+        <div class="aio-meta"><span class="name">REC_2506-20-143022.m4a</span><span class="len">1:24 · 248 KB</span></div>
+      </div>
+    </div>
+    <div class="card__foot"><span class="chip tag">#会议</span></div>
+  </article>
+
+  <!-- ══ FILE ══ -->
+  <div class="section-label">File · 文件</div>
+
+  <article class="card" style="--tab:var(--t-file)">
+    <div class="card__head">
+      <div class="dateline"><span class="typemark"></span><span class="kind">File</span><span class="dot-sep"></span><span class="time">3 天前</span></div>
+      <div class="cluster"><span class="pill todo">Todo</span></div>
+    </div>
+    <div class="card__body">
+      <div class="doc">
+        <div class="fold"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div>
+        <div><div class="doc-name">合同_v3_最终版.pdf</div><div class="doc-size">PDF · 1.4 MB · 待签署</div></div>
+      </div>
+    </div>
+    <div class="card__foot"><span class="chip tag">#法务</span><span class="chip rem fired">已过截止</span></div>
+  </article>
+
+  <!-- ══ GROUP ══ -->
+  <div class="section-label">Group · 合集</div>
+
+  <article class="card" style="--tab:var(--t-group)">
+    <div class="card__head">
+      <div class="dateline"><span class="typemark"></span><span class="kind">Collection</span><span class="dot-sep"></span><span class="time">昨天</span></div>
+      <div class="cluster"><span class="pin"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 4l4 4-3 1-3 3v5l-2-2-4 4-1-1 4-4-2-2h5l3-3z"/></svg></span><span class="pill doing">Doing</span></div>
+    </div>
+    <div class="card__body">
+      <h3 class="gtitle">东京之行 2025</h3>
+      <div class="gbyline">12 项 · 最近更新 昨天</div>
+      <div class="strips">
+        <div class="s"><img src="https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=300&q=70" alt=""></div>
+        <div class="s vid"><img src="https://images.unsplash.com/photo-1554797589-7241bb691973?auto=format&fit=crop&w=300&q=70" alt=""></div>
+        <div class="s"><img src="https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=300&q=70" alt=""></div>
+        <div class="s"><img src="https://images.unsplash.com/photo-1480796927426-f609979314bd?auto=format&fit=crop&w=300&q=70" alt=""></div>
+      </div>
+    </div>
+    <div class="card__foot">
+      <span class="chip count" style="--ci:var(--t-text)"><i></i>5 笔记</span>
+      <span class="chip count" style="--ci:var(--t-photo)"><i></i>5 照片</span>
+      <span class="chip count" style="--ci:var(--t-video)"><i></i>2 视频</span>
+    </div>
+  </article>
+
+  <!-- ══ MULTI-SELECT ══ -->
+  <div class="section-label">Multi-select · 批量</div>
+
+  <article class="card sel has-check" style="--tab:var(--t-text)">
+    <div class="card__head"><div class="dateline"><span class="check on"></span><span class="kind">Note</span><span class="dot-sep"></span><span class="time">今天 09:15</span></div></div>
+    <div class="card__body"><p class="prose">选中条目用 primary 色描边，勾选标记取代左上的类型色点。</p></div>
+    <div class="card__foot"><span class="chip tag">#示例</span></div>
+  </article>
+
+  <article class="card has-check" style="--tab:var(--t-audio)">
+    <div class="card__head"><div class="dateline"><span class="check"></span><span class="kind">Recording</span><span class="dot-sep"></span><span class="time">今天 10:02</span></div></div>
+    <div class="card__body">
+      <div class="wave" data-wave></div>
+      <div class="aio-bar"><button class="play-mini"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button><div class="aio-meta"><span class="name">REC_2506-20-100212.m4a</span><span class="len">0:38 · 112 KB</span></div></div>
+    </div>
+    <div class="card__foot"></div>
+  </article>
+</div>
+
+<div class="toolbar">
+  <button class="tg primary" id="selectBtn">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>
+    进入批量
+  </button>
+</div>
+
+<script>
+function fillWave(el){const bars=46;let o="";for(let i=0;i<bars;i++){const e=Math.sin((i/bars)*Math.PI),w=Math.sin(i*.9)*.3+Math.sin(i*.37)*.2,h=12+e*28+w*12;o+=`<i style="height:${Math.max(5,h|0)}px"></i>`;}el.innerHTML=o;}
+document.querySelectorAll("[data-wave]").forEach(fillWave);
+
+const root=document.body,tBtn=document.getElementById("themeBtn"),tIcon=document.getElementById("themeIcon");
+const moon='<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>';
+const sun='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+tBtn.addEventListener("click",()=>{root.classList.toggle("dark");const d=root.classList.contains("dark");tIcon.innerHTML=d?sun:moon;});
+
+let sel=false;const b=document.getElementById("selectBtn");
+b.addEventListener("click",()=>{
+  sel=!sel;b.classList.toggle("active",sel);b.lastChild.textContent=sel?" 退出批量":" 进入批量";
+  document.querySelectorAll(".card").forEach(c=>{
+    if(!c.querySelector(".dateline .check")){const h=c.querySelector(".dateline");if(h){const k=document.createElement("span");k.className="check";h.prepend(k);}}
+    const k=c.querySelector(".dateline .check");if(!k)return;
+    c.classList.toggle("has-check",sel);k.classList.toggle("on",sel);c.classList.toggle("sel",sel);
+    k.onclick=e=>{e.stopPropagation();k.classList.toggle("on");c.classList.toggle("sel",k.classList.contains("on"));};
+  });
+});
+</script>
+</body>
+</html>

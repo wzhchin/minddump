@@ -147,6 +147,12 @@
     <string name="color_pink">Pink</string>
 
     <!-- Group card / comments -->
+    <string name="kind_note">Note</string>
+    <string name="kind_photo">Photo</string>
+    <string name="kind_video">Video</string>
+    <string name="kind_recording">Recording</string>
+    <string name="kind_file">File</string>
+    <string name="kind_collection">Collection</string>
     <string name="group_unnamed">Unnamed group</string>
     <string name="group_member_count">%1$d items</string>
     <string name="group_empty">Empty group</string>
