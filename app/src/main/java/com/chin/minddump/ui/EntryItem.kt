@@ -32,7 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -80,6 +79,7 @@ import com.chin.minddump.ui.components.VideoPlayerDialog
 import com.chin.minddump.ui.components.ZoomableAsyncImage
 import com.chin.minddump.ui.theme.HapticPattern
 import com.chin.minddump.ui.theme.LocalAnimationDuration
+import com.chin.minddump.ui.theme.LocalExpressiveShapes
 import com.chin.minddump.ui.theme.LocalMotionCurve
 import com.chin.minddump.ui.theme.rememberPremiumHaptics
 import kotlinx.coroutines.Dispatchers
@@ -259,20 +259,13 @@ fun GroupSummaryCard(
                 .padding(start = 16.dp, top = 16.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Primary-colored dot — replaces the circular folder-icon avatar.
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(6.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Folder,
-                    contentDescription = stringResource(R.string.group_media_preview),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+                    .background(MaterialTheme.colorScheme.primary),
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = summary.name.ifBlank { stringResource(R.string.group_unnamed) },
@@ -458,8 +451,8 @@ private fun CommentListSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+            .clip(LocalExpressiveShapes.current.cardSmall)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {
         // Expand/collapse affordance
@@ -584,8 +577,9 @@ fun EntryItem(
         // In multi-select the whole card toggles selection on tap.
         enabled = !isMultiSelectMode,
         modifier = modifier,
+        typeTint = entry.type.toColor(),
     ) {
-        // Multi-select checkbox
+        // ── Header + content ──
         if (isMultiSelectMode) {
             Row(
                 modifier = Modifier
@@ -604,20 +598,34 @@ fun EntryItem(
                     onCheckedChange = { onClick() },
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                EntryCardHeader(entry, showLock = false)
+                EntryCardHeader(entry, showLock = false, floating = false)
             }
         } else {
-            // ── Header row: type icon avatar + timestamp ──
-            EntryCardHeader(entry)
-        }
-
-        // ── Content area per type ──
-        when (entry.type) {
-            EntryType.TEXT -> TextEntryContent(entry)
-            EntryType.PHOTO -> PhotoEntryContent(entry)
-            EntryType.RECORDING -> AudioEntryContent(entry)
-            EntryType.VIDEO -> VideoEntryContent(entry)
-            else -> FileEntryContent(entry)
+            when (entry.type) {
+                EntryType.PHOTO, EntryType.VIDEO -> {
+                    // Media-first hero: header floats over the edge-to-edge media.
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        val openLong = {
+                            haptics.perform(HapticPattern.Buildup)
+                            onLongClick()
+                        }
+                        if (entry.type == EntryType.PHOTO) {
+                            PhotoEntryContent(entry, onLongClick = openLong)
+                        } else {
+                            VideoEntryContent(entry, onLongClick = openLong)
+                        }
+                        EntryCardHeader(entry, floating = true)
+                    }
+                }
+                else -> {
+                    EntryCardHeader(entry, floating = false)
+                    when (entry.type) {
+                        EntryType.TEXT -> TextEntryContent(entry)
+                        EntryType.RECORDING -> AudioEntryContent(entry)
+                        else -> FileEntryContent(entry)
+                    }
+                }
+            }
         }
 
         // ── Tags + reminder footer (omitted in multi-select / when empty) ──
@@ -649,84 +657,136 @@ fun EntryItem(
 // ──────────────────────────────────────────────
 
 @Composable
-private fun EntryCardHeader(entry: MindDumpEntry, showLock: Boolean = true) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Circular type icon avatar
-        val typeIcon = entry.type.toIcon()
-        val typeColor = entry.type.toColor()
+private fun EntryCardHeader(
+    entry: MindDumpEntry,
+    showLock: Boolean = true,
+    floating: Boolean = false,
+) {
+    val typeColor = entry.type.toColor()
+    val headerRow: @Composable () -> Unit = {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Type-colored dot — replaces the circular type-icon avatar.
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(typeColor),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
 
+            // Relative timestamp
+            Text(
+                text = formatRelativeTimestamp(entry.monthFolder, entry.timestamp),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (floating) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Right-aligned indicator cluster: pin + status + lock.
+            IndicatorCluster(entry = entry, showLock = showLock, floating = floating)
+        }
+    }
+
+    if (floating) {
+        // Floating chip overlaying the media hero, with a legibility scrim.
         Box(
             modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(typeColor.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = typeIcon,
-                contentDescription = entry.type.name,
-                tint = typeColor,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Relative timestamp
-        Text(
-            text = formatRelativeTimestamp(entry.monthFolder, entry.timestamp),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Pin indicator for pinned entries
-        if (entry.isPinned) {
-            Icon(
-                imageVector = Icons.Filled.PushPin,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-        }
-
-        // Todo status badge for statused entries
-        if (entry.todoState != TodoState.NONE) {
-            val isClosed = entry.todoState == TodoState.DONE || entry.todoState == TodoState.CANCEL
-            Surface(
-                shape = CircleShape,
-                color = statusBadgeColor(entry.todoState),
-            ) {
-                Text(
-                    text = statusLabel(entry.todoState),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(
-                        alpha = if (isClosed) 0.6f else 1f,
+                .fillMaxWidth()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0f to androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f),
+                        1f to androidx.compose.ui.graphics.Color.Transparent,
                     ),
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                )
+                ),
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                headerRow()
             }
-            Spacer(modifier = Modifier.width(4.dp))
         }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            headerRow()
+        }
+    }
+}
 
-        // Lock icon for encrypted entries. Drive this from the parsed metadata
-        // property rather than a filename substring sniff — robust to renames.
-        val isEncrypted = FileMetadata.fromFile(entry.file)?.isEncrypted == true
-        if (showLock && isEncrypted) {
-            Icon(
-                imageVector = Icons.Filled.Lock,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+/** Right-aligned pin / status / lock cluster shared by the header variants. */
+@Composable
+private fun IndicatorCluster(
+    entry: MindDumpEntry,
+    showLock: Boolean,
+    floating: Boolean,
+) {
+    val onSurface = if (floating) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    // Pin indicator for pinned entries
+    if (entry.isPinned) {
+        Icon(
+            imageVector = Icons.Filled.PushPin,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = if (floating) onSurface else MaterialTheme.colorScheme.primary,
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+    }
+
+    // Todo status badge for statused entries
+    if (entry.todoState != TodoState.NONE) {
+        val isClosed = entry.todoState == TodoState.DONE || entry.todoState == TodoState.CANCEL
+        Surface(
+            shape = CircleShape,
+            color = if (floating) {
+                androidx.compose.ui.graphics.Color.White.copy(alpha = 0.25f)
+            } else {
+                statusBadgeColor(entry.todoState)
+            },
+        ) {
+            Text(
+                text = statusLabel(entry.todoState),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (floating) {
+                    onSurface.copy(alpha = if (isClosed) 0.7f else 1f)
+                } else {
+                    MaterialTheme.colorScheme.onSecondaryContainer.copy(
+                        alpha = if (isClosed) 0.6f else 1f,
+                    )
+                },
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
+        Spacer(modifier = Modifier.width(4.dp))
+    }
+
+    // Lock icon for encrypted entries. Drive this from the parsed metadata
+    // property rather than a filename substring sniff — robust to renames.
+    val isEncrypted = FileMetadata.fromFile(entry.file)?.isEncrypted == true
+    if (showLock && isEncrypted) {
+        Icon(
+            imageVector = Icons.Filled.Lock,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+            tint = onSurface.copy(alpha = if (floating) 0.85f else 0.5f),
+        )
     }
 }
 
@@ -821,24 +881,26 @@ private fun TextEntryContent(entry: MindDumpEntry) {
 // ──────────────────────────────────────────────
 
 @Composable
-private fun PhotoEntryContent(entry: MindDumpEntry) {
-    val innerShape = RoundedCornerShape(12.dp)
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp)
-            .padding(bottom = 8.dp)
-            .clip(innerShape)
-            .height(200.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        ZoomableAsyncImage(
-            model = entry.file,
-            contentDescription = stringResource(R.string.photo),
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-        )
+private fun PhotoEntryContent(entry: MindDumpEntry, onLongClick: () -> Unit = {}) {
+    MediaHeroClip { clip ->
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .clip(clip)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongClick,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            ZoomableAsyncImage(
+                model = entry.file,
+                contentDescription = stringResource(R.string.photo),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
     }
 }
 
@@ -886,37 +948,55 @@ private fun VideoPlayOverlay() {
 }
 
 @Composable
-private fun VideoEntryContent(entry: MindDumpEntry) {
-    val innerShape = RoundedCornerShape(12.dp)
+private fun VideoEntryContent(entry: MindDumpEntry, onLongClick: () -> Unit = {}) {
     var showPlayer by remember { mutableStateOf(false) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp)
-            .padding(bottom = 8.dp)
-            .clip(innerShape)
-            .height(200.dp)
-            .combinedClickable { showPlayer = true },
-        contentAlignment = Alignment.Center,
-    ) {
-        // Plain thumbnail (no built-in tap-to-zoom): tapping opens the video player.
-        coil3.compose.AsyncImage(
-            model = entry.file,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-        )
-
-        VideoPlayOverlay()
+    MediaHeroClip { clip ->
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .clip(clip)
+                .combinedClickable(
+                    onClick = { showPlayer = true },
+                    onLongClick = onLongClick,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Plain thumbnail (no built-in tap-to-zoom): tapping opens the video player.
+            coil3.compose.AsyncImage(
+                model = entry.file,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            VideoPlayOverlay()
+        }
     }
-
     if (showPlayer) {
         VideoPlayerDialog(
             file = entry.file,
             onDismissRequest = { showPlayer = false },
         )
     }
+}
+
+/**
+ * Provides the edge-to-edge clip shape (card top corners only) for media hero
+ * regions, so photo/video media bleeds under the floating header chip.
+ */
+@Composable
+private fun MediaHeroClip(content: @Composable (androidx.compose.ui.graphics.Shape) -> Unit) {
+    val shapes = LocalExpressiveShapes.current
+    val topStart =
+        (shapes.entryCard as? androidx.compose.foundation.shape.RoundedCornerShape)
+            ?.topStart ?: androidx.compose.foundation.shape.CornerSize(0.dp)
+    val clip = RoundedCornerShape(
+        topStart = topStart,
+        topEnd = topStart,
+        bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp),
+        bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp),
+    )
+    content(clip)
 }
 
 // ──────────────────────────────────────────────
