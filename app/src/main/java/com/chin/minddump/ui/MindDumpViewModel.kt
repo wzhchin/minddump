@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -140,8 +141,12 @@ data class MindDumpUiState(
     // Tag editor sheet: the entry whose tags are being edited, plus autocomplete hints.
     val tagEditorFor: MindDumpEntry? = null,
     val tagSuggestions: List<String> = emptyList(),
-    // Active tag filter on the feed; null = no filter.
-    val tagFilter: String? = null,
+    // Active feed filter (time + todo + tag, AND-combined). Default = unfiltered.
+    val feedFilter: FeedFilter = FeedFilter(),
+    // Whether the inline tag filter list is shown (toggled by the tag action).
+    val tagListVisible: Boolean = false,
+    // Faceted tag list for the inline tag filter (reflects time+todo-narrowed entries).
+    val facetTags: List<String> = emptyList(),
     // Event date/time picker: the entry an event is being scheduled on.
     val eventEditorFor: MindDumpEntry? = null,
     // One-shot: request runtime POST_NOTIFICATIONS permission (consumed by UI).
@@ -184,32 +189,51 @@ class MindDumpViewModel
                 initialValue = ThemePreferences(),
             )
 
-        // Track current space, search query, and tag filter as flows
+        // Track current space, search query, and feed filter as flows
         private val currentSpaceFlow = MutableStateFlow(Space.PUBLIC)
         private val searchQueryFlow = MutableStateFlow("")
-        private val tagFilterFlow = MutableStateFlow<String?>(null)
+        private val filterFlow = MutableStateFlow(FeedFilter())
 
         // Observe entries: switches between all entries and search results, then
-        // narrows by the active tag filter (tags ride on each entry from the index).
+        // narrows by the active feed filter (AND across time/todo/tag dimensions).
+        // Tags ride on each entry from the index; todoState and tid are also present,
+        // so filtering is in-memory over the fetched list.
         @OptIn(ExperimentalCoroutinesApi::class)
         val entriesFlow: StateFlow<List<MindDumpEntry>> =
-            combine(currentSpaceFlow, searchQueryFlow, tagFilterFlow) { space, query, tag ->
-                Triple(space, query, tag)
-            }.flatMapLatest { (space, query, tag) ->
+            combine(currentSpaceFlow, searchQueryFlow, filterFlow) { space, query, filter ->
+                Triple(space, query, filter)
+            }.flatMapLatest { (space, query, filter) ->
                 val source = if (query.isBlank()) {
                     repository.getEntries(space)
                 } else {
                     repository.searchEntries(space, query)
                 }
-                if (tag.isNullOrBlank()) {
-                    source
+                source.map { list -> list.filter { filter.matches(it) } }
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = emptyList(),
+            )
+
+        /**
+         * Faceted tag list for the inline tag filter: tags still present among entries
+         * visible after applying the **time + todo** dimensions (NOT the tag dimension's
+         * own narrowing), restricted to tags that co-occur with the currently-selected
+         * tags. Selected tags are always kept so they stay deselectable. A tag that no
+         * qualifying entry carries is hidden.
+         */
+        val facetTagsFlow: StateFlow<List<String>> =
+            combine(currentSpaceFlow, searchQueryFlow, filterFlow) { space, query, filter ->
+                Triple(space, query, filter)
+            }.map { (space, query, filter) ->
+                val timeTodoFilter = filter.copy(tags = emptySet())
+                val source = if (query.isBlank()) {
+                    repository.getEntries(space).first()
                 } else {
-                    source.map { list ->
-                        list.filter { entry ->
-                            entry.tags.any { t -> t.equals(tag, ignoreCase = true) }
-                        }
-                    }
+                    repository.searchEntries(space, query).first()
                 }
+                val qualifying = source.filter { timeTodoFilter.matches(it) }
+                computeFacetTags(qualifying, filter.tags)
             }.stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5000),
@@ -230,6 +254,13 @@ class MindDumpViewModel
                     val grouped = groupEntriesWithComments(entries)
                     _uiState.update { it.copy(entries = entries, groupedEntries = grouped) }
                     refreshGroups()
+                }
+            }
+
+            // Keep the faceted tag list in sync with the active (time+todo) filter.
+            viewModelScope.launch {
+                facetTagsFlow.collect { facets ->
+                    _uiState.update { it.copy(facetTags = facets) }
                 }
             }
 
@@ -374,14 +405,14 @@ class MindDumpViewModel
 
         private fun applySpaceSwitch(newSpace: Space) {
             currentSpaceFlow.value = newSpace
-            // A tag filter is space-scoped; clear it on switch to avoid stale filters.
-            tagFilterFlow.value = null
+            // Filters are space-scoped; clear them on switch to avoid stale filters.
+            filterFlow.value = FeedFilter()
             _uiState.update {
                 it.copy(
                     currentSpace = newSpace,
                     isDarkTheme = newSpace == Space.PRIVATE,
                     pendingSpaceSwitch = false,
-                    tagFilter = null,
+                    feedFilter = FeedFilter(),
                 )
             }
         }
@@ -683,10 +714,69 @@ class MindDumpViewModel
             }
         }
 
-        /** Apply (or clear with null) a tag filter on the current space feed. */
-        fun setTagFilter(tag: String?) {
-            tagFilterFlow.value = tag
-            _uiState.update { it.copy(tagFilter = tag) }
+        // ── Feed filter (time + todo + tag, AND-combined) ──
+
+        /** Set the time dimension; pass [TimeFilter.None] to clear it. */
+        fun setTimeFilter(time: TimeFilter) {
+            filterFlow.update { it.copy(time = time) }
+            _uiState.update { it.copy(feedFilter = filterFlow.value) }
+        }
+
+        /** Toggle a todo status in the todo dimension. */
+        fun toggleTodoFilter(state: TodoState) {
+            filterFlow.update { f ->
+                val next = if (state in f.todoStates) f.todoStates - state else f.todoStates + state
+                f.copy(todoStates = next)
+            }
+            _uiState.update { it.copy(feedFilter = filterFlow.value) }
+        }
+
+        /** Toggle a tag in the tag dimension (intersection semantics). */
+        fun toggleTagFilter(tag: String) {
+            filterFlow.update { f ->
+                val lower = tag.lowercase()
+                val selected = f.tags.map { it.lowercase() }.toMutableSet()
+                if (lower in selected) selected.remove(lower) else selected.add(lower)
+                // Preserve display casing from facetTags for consistency.
+                val display = (uiState.value.facetTags + f.tags)
+                    .firstOrNull { it.lowercase() == lower } ?: tag
+                val next = if (lower in f.tags.map { it.lowercase() }) {
+                    f.tags.filterNot { it.lowercase() == lower }
+                } else {
+                    f.tags + display
+                }
+                f.copy(tags = next.toSet())
+            }
+            _uiState.update { it.copy(feedFilter = filterFlow.value) }
+        }
+
+        /** Show or hide the inline tag filter list. */
+        fun setTagListVisible(visible: Boolean) {
+            _uiState.update { it.copy(tagListVisible = visible) }
+        }
+
+        /** Clear the tag dimension. */
+        fun clearTagFilter() {
+            filterFlow.update { it.copy(tags = emptySet()) }
+            _uiState.update { it.copy(feedFilter = filterFlow.value) }
+        }
+
+        /** Clear the todo dimension. */
+        fun clearTodoFilter() {
+            filterFlow.update { it.copy(todoStates = emptySet()) }
+            _uiState.update { it.copy(feedFilter = filterFlow.value) }
+        }
+
+        /** Clear the time dimension. */
+        fun clearTimeFilter() {
+            filterFlow.update { it.copy(time = TimeFilter.None) }
+            _uiState.update { it.copy(feedFilter = filterFlow.value) }
+        }
+
+        /** Clear all three dimensions. */
+        fun clearAllFilters() {
+            filterFlow.value = FeedFilter()
+            _uiState.update { it.copy(feedFilter = FeedFilter()) }
         }
 
         // ── Scheduled events ──

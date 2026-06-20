@@ -231,4 +231,21 @@
     <string name="tag_invalid">Tags cannot contain spaces, #, or /</string>
     <string name="tag_filter_label">Tag filter</string>
     <string name="tag_filter_all">All</string>
+
+    <!-- Feed filter (time + todo + tag, top-bar actions) -->
+    <string name="filter_time">Time</string>
+    <string name="filter_todo">Todo</string>
+    <string name="filter_tag">Tags</string>
+    <string name="filter_time_today">Today</string>
+    <string name="filter_time_next_3_days">3 days</string>
+    <string name="filter_time_next_7_days">Next 7 days</string>
+    <string name="filter_time_past_7_days">Past 7 days</string>
+    <string name="filter_time_custom">Custom</string>
+    <string name="filter_custom_start">Start date</string>
+    <string name="filter_custom_end">End date</string>
+    <string name="filter_custom_confirm">OK</string>
+    <string name="filter_clear">Clear</string>
+    <string name="filter_clear_all">Clear all filters</string>
+    <string name="filter_empty_result">No matches for the current filter</string>
+    <string name="filter_tag_hint">Tap a tag to filter (intersection)</string>
 </resources>

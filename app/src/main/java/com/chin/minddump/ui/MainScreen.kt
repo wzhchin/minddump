@@ -21,7 +21,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,14 +28,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -381,6 +378,19 @@ fun MainScreen(
                             },
                             actions = {
                                 if (!searchExpanded) {
+                                    // Feed filters (time + todo + tag), AND-combined.
+                                    com.chin.minddump.ui.components.FeedFilterActions(
+                                        filter = uiState.feedFilter,
+                                        onSetTime = { viewModel.setTimeFilter(it) },
+                                        onToggleTodo = { viewModel.toggleTodoFilter(it) },
+                                        onToggleTagList = {
+                                            haptics.perform(HapticPattern.Tick)
+                                            viewModel.setTagListVisible(!uiState.tagListVisible)
+                                        },
+                                        tint = LocalTintTheme.current.iconTint
+                                            .takeIf { it != Color.Unspecified }
+                                            ?: MaterialTheme.colorScheme.onSurface,
+                                    )
                                     // Search
                                     IconButton(onClick = {
                                         haptics.perform(HapticPattern.Tick)
@@ -462,25 +472,32 @@ fun MainScreen(
                 Column(
                     modifier = Modifier.fillMaxSize().padding(paddingValues),
                 ) {
-                    // Active tag filter chip (shown only when filtering the feed).
-                    uiState.tagFilter?.let { tag ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                    // Inline faceted tag list: shown when toggled on or when a tag is
+                    // active. Lists tags still present among time+todo-narrowed entries;
+                    // selecting is intersection semantics (see FeedTagFacetList).
+                    val showTagList = uiState.tagListVisible || uiState.feedFilter.tagsActive
+                    if (showTagList && uiState.facetTags.isNotEmpty()) {
+                        com.chin.minddump.ui.components.FeedTagFacetList(
+                            facetTags = uiState.facetTags,
+                            selectedTags = uiState.feedFilter.tags,
+                            onToggleTag = { tag ->
+                                haptics.perform(HapticPattern.Tick)
+                                viewModel.toggleTagFilter(tag)
+                            },
+                            onClear = { viewModel.clearTagFilter() },
+                        )
+                    }
+                    // Distinct empty state when an active filter yields no entries.
+                    val filterActive = !uiState.feedFilter.isEmpty
+                    if (filterActive && scopeGroupedEntries.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            androidx.compose.material3.FilterChip(
-                                selected = true,
-                                onClick = { viewModel.setTagFilter(null) },
-                                label = { Text("#$tag") },
-                                trailingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = stringResource(R.string.cancel),
-                                        modifier = Modifier.size(InputChipDefaults.IconSize),
-                                    )
-                                },
+                            Text(
+                                text = stringResource(R.string.filter_empty_result),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
