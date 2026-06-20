@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
@@ -1068,6 +1069,7 @@ private fun EntryType.toIcon(): ImageVector = when (this) {
     EntryType.RECORDING -> Icons.Filled.Mic
     EntryType.VIDEO -> Icons.Filled.Videocam
     EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
+    EntryType.GROUP -> Icons.Filled.CreateNewFolder
     EntryType.UNKNOWN -> Icons.AutoMirrored.Filled.HelpOutline
 }
 
@@ -1078,6 +1080,7 @@ private fun EntryType.toKindLabel(): String = when (this) {
     EntryType.VIDEO -> stringResource(R.string.kind_video)
     EntryType.RECORDING -> stringResource(R.string.kind_recording)
     EntryType.FILE -> stringResource(R.string.kind_file)
+    EntryType.GROUP -> stringResource(R.string.kind_file)
     EntryType.UNKNOWN -> stringResource(R.string.kind_file)
 }
 
@@ -1096,6 +1099,7 @@ private fun EntryType.toColor(): Color = when (this) {
     )
 
     EntryType.FILE -> MaterialTheme.colorScheme.onSurfaceVariant
+    EntryType.GROUP -> MaterialTheme.colorScheme.onSurfaceVariant
     EntryType.UNKNOWN -> MaterialTheme.colorScheme.outline
 }
 

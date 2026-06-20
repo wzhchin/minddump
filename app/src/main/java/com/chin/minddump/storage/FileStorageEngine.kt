@@ -437,10 +437,13 @@ class FileStorageEngine(
 
     /**
      * Scan all entries for a given space, sorted by lastModified (newest first).
-     * Uses FileMetadata for parsing — skips non-MindDump files.
-     * Recursively scans group directories and populates groupPath.
+     * Uses FileMetadata for parsing — skips non-MindDump files. Recursively scans
+     * group directories and resolves [MindDumpEntry.parentId] (the owning/nesting
+     * group's tid) directly from ancestor directory names, since tid is derived
+     * purely from a filename.
      *
-     * Indexed roles: FILE, COMMENT, GROUP (directories are now indexed as their
+     * Indexed kinds: FILE/COMMENT content rows plus GROUP directory containers.
+     * META sidecars (`m.yaml` / `m.yaml.enc`) are NOT entries — they are paired
      * own entries). META sidecars (`m.yaml` / `m.yaml.enc`) are NOT entries —
      * they are paired to their owner by timestamp alignment and folded into the
      * owner's [MindDumpEntry.tags] / [MindDumpEntry.events]. Private encrypted
@@ -454,7 +457,7 @@ class FileStorageEngine(
 
         val entries = mutableListOf<MindDumpEntry>()
 
-        fun scanDirectory(dir: File, monthFolder: String, groupPath: String?) {
+        fun scanDirectory(dir: File, monthFolder: String, parentTid: Long?) {
             val children = dir.listFiles() ?: return
 
             // Map timestamp -> parsed sidecar content present in THIS directory.
@@ -479,17 +482,23 @@ class FileStorageEngine(
                 }
             }
 
-            // File owners (FILE/COMMENT).
+            // Sidecar owners (FILE only). Comments share their target's timestamp
+            // (they are named {targetTs}-n-{nowTs}.md) but are NOT sidecar owners —
+            // they are consumers of the file's metadata, not contenders for it.
+            // Counting them here would inflate the owner count and make the sidecar
+            // look ambiguous, dropping the owner's tags/events the moment it gains a
+            // comment. So only FILE rows are sidecar owners.
             val fileOwnersByTimestamp = mutableMapOf<String, Int>() // ts -> count
             children.forEach { file ->
                 if (!file.isFile) return@forEach
                 val meta = FileMetadata.fromFile(file) ?: return@forEach
-                if (meta.role == EntryRole.FILE || meta.role == EntryRole.COMMENT) {
+                if (meta.role == EntryRole.FILE) {
                     fileOwnersByTimestamp.merge(meta.timestamp, 1) { a, b -> a + b }
                 }
             }
 
-            // Emit FILE/COMMENT owners with their paired sidecar.
+            // Emit FILE/COMMENT owners with their paired sidecar. A comment's own
+            // tid derives from its `-n-{nowTs}` segment (NOT the leading targetTs).
             children.forEach { file ->
                 if (!file.isFile) return@forEach
                 val meta = FileMetadata.fromFile(file) ?: return@forEach
@@ -501,16 +510,25 @@ class FileStorageEngine(
                     fileOwnersByTimestamp = fileOwnersByTimestamp,
                     groupSubDirsByTimestamp = groupSubDirsByTimestamp,
                 )
+                val commentTs = if (meta.role == EntryRole.COMMENT) {
+                    Tid.parseCommentStem(file.nameWithoutExtension)
+                } else {
+                    null
+                }
                 entries.add(
                     MindDumpEntry(
                         file = file,
                         type = meta.entryType,
                         space = space,
-                        monthFolder = monthFolder,
-                        timestamp = meta.timestamp,
+                        monthFolder = if (commentTs != null) "" else monthFolder,
+                        tid = commentTs?.ownTid ?: Tid.tidOfStem(file.nameWithoutExtension),
                         role = meta.role,
-                        targetTimestamp = null, // derived during reconciliation
-                        groupPath = groupPath,
+                        parentId = parentTid,
+                        // Comments carry their owner's targetTs so the repository can
+                        // resolve targetTid (the owner's collision offset isn't in the
+                        // comment filename, so targetTid is matched against scanned owners).
+                        targetTid = commentTs?.let { 0L },
+                        commentTargetTs = commentTs?.targetTs,
                         isPinned = meta.isPinned,
                         todoState = meta.todoState,
                         tags = sidecar?.parsed?.tags ?: emptyList(),
@@ -521,35 +539,34 @@ class FileStorageEngine(
             }
 
             // Emit GROUP owners (the directories themselves) with their paired
-            // sidecar, then recurse into them.
+            // sidecar, then recurse into them. The group's own tid comes from its
+            // directory name and becomes the parentTid for its descendants.
             groupSubDirsByTimestamp.forEach { (ts, subDir) ->
+                val groupTid = Tid.tidOfStem(subDir.name)
                 val sidecar = sidecarIfUnambiguous(
                     timestamp = ts,
                     sidecarsByTimestamp = sidecarsByTimestamp,
                     fileOwnersByTimestamp = fileOwnersByTimestamp,
                     groupSubDirsByTimestamp = groupSubDirsByTimestamp,
                 )
+                val dirMeta = FileMetadata.fromFile(subDir)
                 entries.add(
                     MindDumpEntry(
                         file = subDir,
-                        type = EntryType.FILE, // groups have no media type
+                        type = EntryType.GROUP,
                         space = space,
                         monthFolder = monthFolder,
-                        timestamp = ts,
+                        tid = groupTid,
                         role = EntryRole.GROUP,
-                        targetTimestamp = null,
-                        groupPath = groupPath,
-                        isPinned = false, // derived below from the dir metadata
-                        todoState = TodoState.NONE,
+                        parentId = parentTid,
+                        isPinned = dirMeta?.isPinned ?: false,
+                        todoState = dirMeta?.todoState ?: TodoState.NONE,
                         tags = sidecar?.parsed?.tags ?: emptyList(),
                         events = sidecar?.parsed?.events ?: emptyList(),
                         metaEncrypted = sidecar?.encrypted ?: false,
-                    ).let {
-                        val dirMeta = FileMetadata.fromFile(subDir)
-                        it.copy(isPinned = dirMeta?.isPinned ?: false, todoState = dirMeta?.todoState ?: TodoState.NONE)
-                    },
+                    ),
                 )
-                scanDirectory(subDir, monthFolder, subDir.absolutePath)
+                scanDirectory(subDir, monthFolder, groupTid)
             }
         }
 

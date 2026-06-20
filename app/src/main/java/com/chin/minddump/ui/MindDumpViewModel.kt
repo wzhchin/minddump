@@ -423,16 +423,18 @@ class MindDumpViewModel
 
         /**
          * Build group summaries for a set of group directories, resolving members
-         * from the current entry set's [MindDumpEntry.groupPath].
+         * from the current entry set's [MindDumpEntry.parentId] (the group's tid).
          */
         private fun buildSummaries(dirGroups: List<File>): List<GroupSummary> {
-            val membersByPath = _uiState.value.entries.groupBy { it.groupPath }
+            val membersByParent = _uiState.value.entries.groupBy { it.parentId }
             return dirGroups.map { dir ->
+                val groupTid = com.chin.minddump.storage.Tid
+                    .tidOfStem(dir.name)
                 GroupSummary(
                     groupDir = dir,
                     name = FileMetadata.fromFile(dir)?.originalName
                         ?: dir.name.substringAfter("-g", dir.name),
-                    memberEntries = membersByPath[dir.absolutePath] ?: emptyList(),
+                    memberEntries = membersByParent[groupTid] ?: emptyList(),
                 )
             }
         }
@@ -704,7 +706,7 @@ class MindDumpViewModel
 
         fun removeEntryEvent(entry: MindDumpEntry, event: com.chin.minddump.storage.EntryEvent) {
             viewModelScope.launch(Dispatchers.IO) {
-                val updated = repository.removeEvent(entry, event.key())
+                val updated = repository.removeEvent(entry, event)
                 _uiState.update {
                     it.copy(
                         selectedEntryForAction = it.selectedEntryForAction?.let { sel ->
@@ -1227,22 +1229,21 @@ class MindDumpViewModel
         fun isSessionUnlocked(): Boolean = repository.isSessionUnlocked()
 
         /**
-         * Group entries with their comments.
-         * Comments (role=N) are nested under their target entry (matched by targetTimestamp).
-         * Orphan comments (no matching target) appear as standalone entries.
+         * Group entries with their comments. Comments (role=N) are nested under their
+         * target entry (matched by targetTid → owner tid). Orphan comments (no
+         * matching target) appear as standalone entries.
          */
         private fun groupEntriesWithComments(entries: List<MindDumpEntry>): List<GroupedEntry> {
             val files = entries.filter { it.role == EntryRole.FILE }
             val comments = entries.filter { it.role == EntryRole.COMMENT }
 
-            // Build a map of timestamp → file entry for quick lookup
             val result = mutableListOf<GroupedEntry>()
             val matchedComments = mutableSetOf<MindDumpEntry>()
 
-            // For each file, find its comments
+            // For each file, find its comments (matched by the owner's tid)
             for (file in files) {
                 val fileComments = comments.filter {
-                    it.targetTimestamp == file.timestamp && it !in matchedComments
+                    it.targetTid == file.tid && it !in matchedComments
                 }
                 matchedComments.addAll(fileComments)
                 result.add(GroupedEntry(entry = file, comments = fileComments))

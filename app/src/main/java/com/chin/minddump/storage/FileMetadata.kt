@@ -129,8 +129,11 @@ data class FileMetadata(
 }
 
 /**
- * Role identifiers in MindDump filenames.
- * Used to distinguish files, comments, group directories, and metadata sidecars.
+ * Role identifiers in MindDump filenames. **Filename-parsing only** — the DB has
+ * no `role` column; entry kind is expressed by [EntryType] (with a GROUP value for
+ * directory containers). This enum survives in [FileMetadata] parsing (the `f`/`n`/
+ * `g`/`m` role chars are still in the name) and as an in-memory flag on
+ * [MindDumpEntry] so comment rendering can discriminate without knowing the table.
  */
 enum class EntryRole(
     val code: String

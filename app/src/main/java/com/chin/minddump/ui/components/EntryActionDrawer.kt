@@ -278,7 +278,7 @@ fun EntryActionDrawer(
                         )
                     }
                 }
-                if (!isGroup && entry!!.groupPath != null && onMoveOutOfGroup != null) {
+                if (!isGroup && entry!!.parentId != null && onMoveOutOfGroup != null) {
                     IconButton(onClick = {
                         haptics.perform(HapticPattern.Tick)
                         onMoveOutOfGroup()

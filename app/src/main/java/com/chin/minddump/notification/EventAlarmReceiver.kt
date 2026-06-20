@@ -42,17 +42,18 @@ class EventAlarmReceiver : BroadcastReceiver() {
         val space = intent
             .getStringExtra(NotificationActions.EXTRA_SPACE)
             ?.let { runCatching { Space.valueOf(it) }.getOrNull() } ?: return
-        val eventKey = intent.getStringExtra(NotificationActions.EXTRA_EVENT_KEY) ?: return
+        val eventId = intent.getLongExtra(NotificationActions.EXTRA_EVENT_ID, -1L)
+        if (eventId == -1L) return
         val ownerName = intent.getStringExtra(NotificationActions.EXTRA_OWNER_NAME).orEmpty()
 
-        Timber.i("Event fired: %s for %s", eventKey, ownerName)
+        Timber.i("Event fired: %d for %s", eventId, ownerName)
         postNotification(context, ownerPath, space, ownerName)
 
         // goAsync keeps the receiver alive while the IO write completes.
         val pendingResult = goAsync()
         scope.launch {
             try {
-                repository.markEventFired(ownerPath, eventKey)
+                repository.markEventFired(ownerPath, eventId)
             } catch (t: Throwable) {
                 Timber.e(t, "Failed to mark event fired")
             } finally {

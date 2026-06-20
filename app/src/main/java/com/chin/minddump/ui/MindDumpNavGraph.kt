@@ -192,7 +192,8 @@ fun MindDumpNavGraph(
                             type = com.chin.minddump.storage.EntryType.TEXT,
                             space = uiState.currentSpace,
                             monthFolder = file.parentFile?.name ?: "",
-                            timestamp = file.name.substringBefore('-'),
+                            tid = com.chin.minddump.storage.Tid
+                                .tidOfStem(file.nameWithoutExtension),
                             role = com.chin.minddump.storage.EntryRole.FILE,
                         )
                     }

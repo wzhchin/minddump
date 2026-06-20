@@ -156,7 +156,7 @@ class FileStorageEngineTest {
                 type = EntryType.TEXT,
                 space = Space.PUBLIC,
                 monthFolder = file.parentFile!!.name,
-                timestamp = "2401-01-010000",
+                tid = Tid.tidOfStem(file.nameWithoutExtension),
             )
 
         val result = engine.deleteEntry(entry)
@@ -174,7 +174,7 @@ class FileStorageEngineTest {
                 type = EntryType.TEXT,
                 space = Space.PUBLIC,
                 monthFolder = file.parentFile!!.name,
-                timestamp = "2401-01-010000",
+                tid = Tid.tidOfStem(file.nameWithoutExtension),
             )
 
         val trashed = engine.trashEntry(entry)
@@ -195,7 +195,7 @@ class FileStorageEngineTest {
                 type = EntryType.TEXT,
                 space = Space.PUBLIC,
                 monthFolder = file.parentFile!!.name,
-                timestamp = "2401-01-010000",
+                tid = Tid.tidOfStem(file.nameWithoutExtension),
             )
         val trashed = engine.trashEntry(entry)
 
@@ -216,7 +216,7 @@ class FileStorageEngineTest {
                 type = EntryType.TEXT,
                 space = Space.PUBLIC,
                 monthFolder = original.parentFile!!.name,
-                timestamp = "2401-01-010000",
+                tid = Tid.tidOfStem(original.nameWithoutExtension),
             )
         val trashed = engine.trashEntry(entry)
         // Re-create a file at the same live path before restoring.
@@ -396,5 +396,26 @@ class FileStorageEngineTest {
         assertTrue(newFile.exists())
         assertEquals("migrate me", newFile.readText())
         assertFalse(File(rootDir, "Public").exists())
+    }
+
+    @Test
+    fun `owner keeps its sidecar tags when it has a comment`() {
+        // Regression: a comment shares its target's timestamp (named
+        // {targetTs}-n-{nowTs}.md). Comments must NOT be counted as sidecar
+        // owners, or the owner's sidecar looks "ambiguous" and is dropped —
+        // silently emptying the owner's tags/events the moment it gains a comment.
+        val dir = File(rootDir, "Public/2024-01").also { it.mkdirs() }
+        val owner = File(dir, "2401-01-010000-f.md").apply { writeText("note") }
+        File(dir, "2401-01-010000-m.yaml").writeText(
+            MetaYamlCodec.encode(EntryMeta(tags = listOf("idea"))),
+        )
+        File(dir, "2401-01-010000-n-2401-01-020000.md").writeText("a comment")
+
+        val entries = engine.scanEntries(Space.PUBLIC)
+        val ownerEntry = entries.first { it.file == owner }
+
+        assertEquals(listOf("idea"), ownerEntry.tags)
+        // The comment is scanned too, as its own (tag-less) entry.
+        assertEquals(2, entries.size)
     }
 }

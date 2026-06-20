@@ -25,9 +25,6 @@ class BootCompletedReceiver : BroadcastReceiver() {
     @Inject
     lateinit var repository: MindDumpRepository
 
-    @Inject
-    lateinit var scheduler: EventScheduler
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -45,21 +42,11 @@ class BootCompletedReceiver : BroadcastReceiver() {
     }
 
     private suspend fun reRegisterPublic() {
-        var count = 0
-        repository.getAllEntries(Space.PUBLIC).forEach { entry ->
-            entry.events.forEach { ev ->
-                if (ev.state == EventState.PENDING) {
-                    scheduler.schedule(
-                        owner = entry.file,
-                        ownerName = entry.file.name,
-                        space = Space.PUBLIC,
-                        eventKey = ev.key(),
-                        dueAtMillis = ev.dueMillis(),
-                        alreadyFired = false,
-                    )
-                    count++
-                }
-            }
+        // registerAllPublicEvents re-arms every pending Public event by its DB row
+        // id via the repository (cancel-then-set, idempotent).
+        repository.registerAllPublicEvents()
+        val count = repository.getAllEntries(Space.PUBLIC).sumOf { entry ->
+            entry.events.count { it.state == EventState.PENDING }
         }
         Timber.i("Re-registered %d public events after boot", count)
     }

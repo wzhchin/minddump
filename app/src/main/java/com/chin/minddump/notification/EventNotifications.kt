@@ -53,7 +53,9 @@ object NotificationActions {
 
     const val EXTRA_OWNER_PATH = "owner_path"
     const val EXTRA_SPACE = "space"
-    const val EXTRA_EVENT_KEY = "event_key"
+
+    /** The firing event's DB row id (events table). Replaces the old due#state key. */
+    const val EXTRA_EVENT_ID = "event_id"
 
     /** PendingIntent request-code namespace base for event alarms. */
     const val EXTRA_OWNER_NAME = "owner_name"

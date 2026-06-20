@@ -6,8 +6,6 @@ import com.chin.minddump.security.CryptoEngine
 import com.chin.minddump.security.PasswordStore
 import com.chin.minddump.storage.EntryEvent
 import com.chin.minddump.storage.EntryMeta
-import com.chin.minddump.storage.EntryRole
-import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.EventState
 import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.FileStorageEngine
@@ -15,6 +13,7 @@ import com.chin.minddump.storage.MetaYamlCodec
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.storage.TagValidator
+import com.chin.minddump.storage.Tid
 import com.chin.minddump.storage.TrashedItem
 import com.chin.minddump.storage.TodoState
 import kotlinx.coroutines.Dispatchers
@@ -83,18 +82,18 @@ class MindDumpRepository
 
         /**
          * Called after Private is unlocked: decrypt every Private owner's sidecar
-         * and backfill its tags/events into Room (clearing [metaEncrypted]).
+         * and backfill its tags/events into Room (clearing [MindDumpEntry.metaEncrypted]).
          * Returns all now-readable [EntryEvent]s with their owning entry, so the
          * scheduler can register future-dues (past-dues are NOT retro-fired).
          */
         suspend fun onPrivateUnlocked(): List<Pair<MindDumpEntry, EntryEvent>> =
             withContext(Dispatchers.IO) {
-                val owners = dao.getAllSnapshot(Space.PRIVATE).map { it.toEntry() }
+                val owners = dao.getAllSnapshot(Space.PRIVATE)
                 val firedKeys = mutableListOf<Pair<MindDumpEntry, EntryEvent>>()
-                owners.forEach { entry ->
+                owners.forEach { entity ->
+                    val entry = entity.toEntry(tags = dao.tagsFor(entity.tid))
                     val meta = loadEntryMeta(entry)
                     if (meta.isEmpty && !hasSidecar(entry)) {
-                        // nothing to do
                         dao.deleteByPath(entry.file.absolutePath)
                         dao.insert(
                             entry
@@ -119,6 +118,7 @@ class MindDumpRepository
                                 isEncrypted = cryptoEngine.isEncryptedFile(refreshed.file),
                             ).copy(lastModified = effectiveLastModified(refreshed)),
                     )
+                    replaceEventRows(refreshed, meta.events)
                     // Register only future pending events; past-dues stay silent (no retro-fire).
                     registerEvents(refreshed)
                     meta.events.forEach { ev -> firedKeys.add(refreshed to ev) }
@@ -133,31 +133,47 @@ class MindDumpRepository
             }.getOrDefault(false)
 
         /**
-         * Observe entries for a space, sorted by lastModified DESC.
+         * Attach an owner's tags AND events (from the relation tables) so the feed
+         * footer can render tag chips and the next-event reminder chip. Events are
+         * needed for display (the reminder); without this join `entry.events` would
+         * be empty and reminders would never appear on cards.
+         */
+        private suspend fun EntryEntity.withMeta(): MindDumpEntry =
+            toEntry(tags = dao.tagsFor(tid), events = dao.eventsFor(tid).map { it.toEntryEvent() })
+
+        /**
+         * Observe entries for a space (content + group rows, newest first), with each
+         * owner's tags/events joined in, and its comments merged as COMMENT entries.
          */
         fun getEntries(space: Space): Flow<List<MindDumpEntry>> =
             dao.getAll(space).map { entities ->
-                entities.map { it.toEntry() }
+                val withMeta = entities.map { it.withMeta() }
+                mergeComments(withMeta, space)
             }
 
         /** One-shot snapshot of all entries in a space (for boot re-registration). */
         suspend fun getAllEntries(space: Space): List<MindDumpEntry> =
             withContext(Dispatchers.IO) {
-                dao.getAllSnapshot(space).map { it.toEntry() }
+                val withMeta = dao.getAllSnapshot(space).map { it.withMeta() }
+                mergeComments(withMeta, space)
             }
 
         /**
-         * Observe entries in [space] carrying [tag]. The `tags` column joins tags
-         * with a U+0001 separator, so the match pattern wraps the tag in seps and
-         * also accepts an exact single-tag row.
+         * Merge a space's comments (from the comments table) into the entry list,
+         * reconstructing each as a [MindDumpEntry] with role == COMMENT so the UI's
+         * comment presentation is unchanged. Only content/group entries carry tags.
          */
-        fun getEntriesByTag(space: Space, tag: String): Flow<List<MindDumpEntry>> {
-            val sep = com.chin.minddump.storage.META_TAGS_SEPARATOR
-            // Match tag appearing as the sole value or between separators.
-            val escaped = tag.replace("*", "\\*").replace("?", "\\?")
-            val pattern = "*$sep$escaped$sep*"
-            return dao.getByTag(space, pattern).map { it.map { e -> e.toEntry() } }
-        }
+        private suspend fun mergeComments(entries: List<MindDumpEntry>, space: Space): List<MindDumpEntry> =
+            withContext(Dispatchers.IO) {
+                val comments = dao.getCommentsSnapshot(space).map { it.toEntry() }
+                entries + comments
+            }
+
+        /** Observe entries in [space] carrying [tag] (joined via the tags table). */
+        fun getEntriesByTag(space: Space, tag: String): Flow<List<MindDumpEntry>> =
+            dao.getByTag(space, tag).map { entities ->
+                entities.map { it.withMeta() }
+            }
 
         /**
          * Search entries whose content contains [query] as a substring.
@@ -170,14 +186,14 @@ class MindDumpRepository
         fun searchEntries(space: Space, query: String): Flow<List<MindDumpEntry>> {
             val pattern = SearchGlob.toPattern(query) ?: return flowOf(emptyList())
             return dao.search(space, pattern).map { entities ->
-                entities.map { it.toEntry() }
+                entities.map { it.withMeta() }
             }
         }
 
         /**
          * Save a text entry: write file + encrypt if Private + insert Room row.
          * [targetGroupDir] non-null writes the entry directly into that group
-         * directory and stamps its `groupPath`; null writes to the month top.
+         * directory and stamps its `parentId`; null writes to the month top.
          */
         suspend fun saveTextEntry(
             space: Space,
@@ -195,9 +211,8 @@ class MindDumpRepository
                     type = meta.entryType,
                     space = space,
                     monthFolder = monthFolderOf(finalFile),
-                    timestamp = meta.timestamp,
-                    role = EntryRole.FILE,
-                    groupPath = targetGroupDir?.absolutePath,
+                    tid = Tid.tidOfStem(finalFile.nameWithoutExtension),
+                    parentId = groupTidOf(targetGroupDir),
                 )
                 dao.insert(
                     entry.toEntity(
@@ -240,9 +255,8 @@ class MindDumpRepository
                     type = meta.entryType,
                     space = space,
                     monthFolder = monthFolderOf(finalFile),
-                    timestamp = meta.timestamp,
-                    role = EntryRole.FILE,
-                    groupPath = groupPathOf(finalFile),
+                    tid = Tid.tidOfStem(finalFile.nameWithoutExtension),
+                    parentId = groupTidOf(finalFile.parentFile),
                 )
                 dao.insert(entry.toEntity(isEncrypted = isEncrypted))
             }
@@ -261,9 +275,8 @@ class MindDumpRepository
                     type = meta.entryType,
                     space = space,
                     monthFolder = monthFolderOf(finalFile),
-                    timestamp = meta.timestamp,
-                    role = EntryRole.FILE,
-                    groupPath = groupPathOf(finalFile),
+                    tid = Tid.tidOfStem(finalFile.nameWithoutExtension),
+                    parentId = groupTidOf(finalFile.parentFile),
                 )
                 dao.insert(entry.toEntity(isEncrypted = isEncrypted))
                 entry
@@ -283,19 +296,25 @@ class MindDumpRepository
                 val finalFile = encryptIfNeeded(file, space)
                 val meta = FileMetadata.fromFile(finalFile)!!
                 val isEncrypted = meta.isEncrypted
+                val commentTs = Tid.parseCommentStem(finalFile.nameWithoutExtension)
+                    ?: error("Not a comment filename: ${finalFile.name}")
                 val entry = MindDumpEntry(
                     file = finalFile,
                     type = meta.entryType,
                     space = space,
-                    monthFolder = finalFile.parentFile?.name ?: "",
-                    timestamp = meta.timestamp,
-                    role = EntryRole.COMMENT,
-                    targetTimestamp = targetEntry.timestamp,
-                    groupPath = targetEntry.groupPath,
+                    monthFolder = "",
+                    tid = commentTs.ownTid,
+                    parentId = groupTidOf(finalFile.parentFile),
+                    targetTid = targetEntry.tid,
                 )
-                dao.insert(
-                    entry.toEntity(
+                dao.insertComment(
+                    CommentEntity(
+                        tid = entry.tid,
+                        targetTid = targetEntry.tid,
+                        filePath = finalFile.absolutePath,
+                        space = space,
                         contentPreview = content.take(500),
+                        lastModified = finalFile.lastModified(),
                         isEncrypted = isEncrypted,
                     ),
                 )
@@ -336,6 +355,7 @@ class MindDumpRepository
          */
         suspend fun saveEntryEdit(entry: MindDumpEntry, newText: String): EditSaveResult =
             withContext(Dispatchers.IO) {
+                val isComment = entry.role == com.chin.minddump.storage.EntryRole.COMMENT
                 val wasEncrypted = cryptoEngine.isEncryptedFile(entry.file)
                 if (wasEncrypted) {
                     val password = sessionPassword
@@ -354,16 +374,31 @@ class MindDumpRepository
                     storageEngine.overwriteText(entry.file, newText)
                 }
 
-                dao.deleteByPath(entry.file.absolutePath)
-                val refreshed = entry // path/type/role unchanged; lastModified flows in via toEntity
-                dao.insert(
-                    refreshed.toEntity(
-                        contentPreview = newText.take(500),
-                        isEncrypted = wasEncrypted,
-                    ),
-                )
-                EditSaveResult.Saved(refreshed)
+                if (isComment) {
+                    updateCommentRow(entry, newText.take(500))
+                } else {
+                    dao.deleteByPath(entry.file.absolutePath)
+                    val refreshed = entry // path/type/tid unchanged; lastModified flows in via toEntity
+                    dao.insert(
+                        refreshed.toEntity(
+                            contentPreview = newText.take(500),
+                            isEncrypted = wasEncrypted,
+                        ),
+                    )
+                }
+                EditSaveResult.Saved(entry)
             }
+
+        /** Refresh a comment's contentPreview/lastModified in place (filePath unchanged). */
+        private suspend fun updateCommentRow(entry: MindDumpEntry, preview: String) {
+            val existing = dao
+                .getCommentsSnapshot(entry.space)
+                .firstOrNull { it.filePath == entry.file.absolutePath } ?: return
+            dao.deleteCommentByTid(existing.tid)
+            dao.insertComment(
+                existing.copy(contentPreview = preview, lastModified = entry.file.lastModified()),
+            )
+        }
 
         /**
          * Load the plaintext content of a text/comment entry for editing.
@@ -437,7 +472,8 @@ class MindDumpRepository
                     }
                 }
 
-                // Refresh the owner row so tags/events + the bumped sidecar mtime flow in.
+                // Refresh the owner row + its tag/event rows so the bumped sidecar
+                // mtime and new tags/events flow in.
                 dao.deleteByPath(entry.file.absolutePath)
                 val refreshed = entry.copy(
                     tags = meta.tags,
@@ -445,13 +481,30 @@ class MindDumpRepository
                     metaEncrypted = false,
                 )
                 dao.insert(
-                    refreshed.toEntity(
-                        contentPreview = contentPreviewOf(refreshed),
-                        isEncrypted = cryptoEngine.isEncryptedFile(entry.file),
-                    ),
+                    refreshed
+                        .toEntity(
+                            contentPreview = contentPreviewOf(refreshed),
+                            isEncrypted = cryptoEngine.isEncryptedFile(entry.file),
+                        ).copy(lastModified = effectiveLastModified(refreshed)),
                 )
+                replaceTagRows(refreshed.tid, meta.tags)
+                replaceEventRows(refreshed, meta.events)
                 refreshed
             }
+
+        /** Replace an owner's tag rows. */
+        private suspend fun replaceTagRows(tid: Long, tags: List<String>) {
+            dao.deleteTagsFor(tid)
+            if (tags.isNotEmpty()) dao.insertTags(tags.map { TagEntity(tid, it) })
+        }
+
+        /** Replace an owner's event rows (sidecar is authority; rows re-register alarms). */
+        private suspend fun replaceEventRows(entry: MindDumpEntry, events: List<EntryEvent>) {
+            dao.deleteEventsFor(entry.tid)
+            if (events.isNotEmpty()) {
+                dao.insertEvents(events.map { it.toEventEntity(entry.tid) })
+            }
+        }
 
         /** Add a tag to [entry] (case-insensitive dedup). No-op if invalid/present. */
         suspend fun addTag(entry: MindDumpEntry, tag: String): MindDumpEntry =
@@ -480,65 +533,63 @@ class MindDumpRepository
             }
 
         /**
-         * Mark a fired event's state. Used by the alarm receiver after firing.
-         * Safe to call from a non-UI context; returns when no matching event.
+         * Mark a fired event's state by its DB row id. Used by the alarm receiver
+         * after firing. Persists to the sidecar (authority) and updates the row.
          */
         suspend fun markEventFired(
             ownerPath: String,
-            eventKey: String,
+            eventId: Long,
         ) = withContext(Dispatchers.IO) {
             val entity = dao.findByPath(ownerPath) ?: return@withContext
-            val entry = entity.toEntry()
+            val entry = entity.toEntry(tags = dao.tagsFor(entity.tid))
             val meta = loadEntryMeta(entry)
-            val updated = meta.copy(
+            val events = dao.eventsFor(entry.tid)
+            val fired = events.firstOrNull { it.id == eventId } ?: return@withContext
+            val updatedMeta = meta.copy(
                 events = meta.events.map { ev ->
-                    if (ev.key() == eventKey) ev.copy(state = EventState.FIRED) else ev
+                    if (ev.due.toString() == fired.due) ev.copy(state = EventState.FIRED) else ev
                 },
             )
-            saveEntryMeta(entry, updated)
+            // Sidecar is authority; refresh both sidecar and the events row.
+            saveEntryMeta(entry, updatedMeta)
         }
 
         /**
-         * Remove a single event by its key: drop it from the sidecar (deleting
-         * the sidecar when it becomes empty) and cancel its registered alarm.
-         * Safe to call from a non-UI context; returns the refreshed entry.
+         * Remove a single event (matched by its due time, the sidecar identity):
+         * drop it from the sidecar (deleting the sidecar when it becomes empty) and
+         * cancel its registered alarm by row id.
          */
-        suspend fun removeEvent(entry: MindDumpEntry, eventKey: String): MindDumpEntry =
+        suspend fun removeEvent(entry: MindDumpEntry, event: EntryEvent): MindDumpEntry =
             withContext(Dispatchers.IO) {
+                val row = dao.eventsFor(entry.tid).firstOrNull { it.due == event.due.toString() }
                 val meta = loadEntryMeta(entry)
-                val updated = meta.copy(events = meta.events.filterNot { it.key() == eventKey })
+                val updated = meta.copy(events = meta.events.filterNot { it == event })
                 val refreshed = saveEntryMeta(entry, updated)
-                eventScheduler.cancel(entry.file, entry.space, eventKey)
+                row?.let { eventScheduler.cancelById(it.id) }
                 refreshed
             }
 
         /** Snapshot all distinct tags in a space (for autocomplete). */
         suspend fun distinctTags(space: Space): List<String> =
-            withContext(Dispatchers.IO) {
-                dao
-                    .getAllSnapshot(space)
-                    .flatMap { it.toEntry().tags }
-                    .distinctBy { it.lowercase() }
-                    .sorted()
-            }
+            withContext(Dispatchers.IO) { dao.distinctTags(space) }
 
-        /** Register one event's alarm (cancel-then-set, idempotent). */
-        private fun scheduleEvent(entry: MindDumpEntry, event: EntryEvent) {
+        /** Register one event's alarm (cancel-then-set by event row id, idempotent). */
+        private suspend fun scheduleEvent(entry: MindDumpEntry, event: EntryEvent) {
+            val eventId = dao.eventsFor(entry.tid).firstOrNull { it.due == event.due.toString() }?.id ?: return
             eventScheduler.schedule(
                 owner = entry.file,
                 ownerName = entry.file.name,
                 space = entry.space,
-                eventKey = event.key(),
+                eventId = eventId,
                 dueAtMillis = event.dueMillis(),
                 alreadyFired = event.state == EventState.FIRED,
             )
         }
 
         /** Register all pending/future events for one entry (post-unlock, post-edit). */
-        fun registerEvents(entry: MindDumpEntry) {
-            entry.events.forEach { ev ->
-                if (ev.state != EventState.FIRED) scheduleEvent(entry, ev)
-            }
+        suspend fun registerEvents(entry: MindDumpEntry) {
+            val events = dao.eventsFor(entry.tid).map { it.toEntryEvent() }
+            events.forEach { ev -> if (ev.state != EventState.FIRED) scheduleEvent(entry, ev) }
         }
 
         /**
@@ -546,7 +597,9 @@ class MindDumpRepository
          * Private events are registered on unlock via [onPrivateUnlocked].
          */
         suspend fun registerAllPublicEvents() = withContext(Dispatchers.IO) {
-            getAllEntries(Space.PUBLIC).forEach(::registerEvents)
+            getAllEntries(Space.PUBLIC).forEach { entry ->
+                if (entry.role != com.chin.minddump.storage.EntryRole.COMMENT) registerEvents(entry)
+            }
         }
 
         /**
@@ -554,8 +607,30 @@ class MindDumpRepository
          */
         suspend fun createGroup(space: Space, name: String?, parentGroupDir: File? = null): File =
             withContext(Dispatchers.IO) {
-                storageEngine.createGroup(space, name, parentGroupDir)
+                storageEngine.createGroup(space, name, parentGroupDir).also { groupDir ->
+                    indexGroupDir(groupDir, space)
+                }
             }
+
+        /** Insert/refresh a group container row (type=GROUP) with tid + parentId from disk. */
+        private suspend fun indexGroupDir(groupDir: File, space: Space) {
+            val tid = Tid.tidOfStem(groupDir.name)
+            val meta = FileMetadata.fromFile(groupDir)
+            val parentTid = groupTidOf(groupDir.parentFile)
+            dao.insert(
+                EntryEntity(
+                    tid = tid,
+                    filePath = groupDir.absolutePath,
+                    type = com.chin.minddump.storage.EntryType.GROUP,
+                    space = space,
+                    monthFolder = monthFolderOf(groupDir),
+                    lastModified = groupDir.lastModified(),
+                    parentId = parentTid,
+                    isPinned = meta?.isPinned ?: false,
+                    todoState = meta?.todoState ?: TodoState.NONE,
+                ),
+            )
+        }
 
         /**
          * Create a group and move an entry into it in one operation.
@@ -569,6 +644,7 @@ class MindDumpRepository
         ): File =
             withContext(Dispatchers.IO) {
                 val groupDir = storageEngine.createGroup(space, name, parentGroupDir)
+                indexGroupDir(groupDir, space)
                 moveToGroup(entry, groupDir)
                 groupDir
             }
@@ -585,6 +661,7 @@ class MindDumpRepository
         ): File =
             withContext(Dispatchers.IO) {
                 val groupDir = storageEngine.createGroup(space, name, parentGroupDir)
+                indexGroupDir(groupDir, space)
                 entries.forEach { moveToGroup(it, groupDir) }
                 groupDir
             }
@@ -606,51 +683,41 @@ class MindDumpRepository
             }
 
         /**
-         * Rename a group directory and rewrite every member's groupPath.
-         * Falls back to [reconcileWithDisk] to guarantee DB/disk consistency.
+         * Rename a group directory: O(1) on the index — only the group row's
+         * filePath changes; members keep their parentId. Falls back to reconcile.
          */
         suspend fun renameGroup(groupDir: File, space: Space, newName: String?): File =
             withContext(Dispatchers.IO) {
-                val oldPath = groupDir.absolutePath
-                val members = dao.getEntriesInGroupSnapshot(oldPath)
+                val oldTid = Tid.tidOfStem(groupDir.name)
                 val newDir = storageEngine.renameGroupDir(groupDir, newName)
-                val newPath = newDir.absolutePath
-                members.forEach { entity ->
-                    val movedFile = File(newPath, entity.filePath.substringAfterLast('/'))
-                    dao.deleteByPath(entity.filePath)
-                    dao.insert(
-                        entity.copy(
-                            filePath = movedFile.absolutePath,
-                            groupPath = newPath,
-                            lastModified = movedFile.lastModified(),
-                        ),
-                    )
+                // The group's tid is unchanged (rename preserves the timestamp),
+                // so only the filePath column needs updating.
+                val existing = dao.findByTid(oldTid)
+                if (existing != null) {
+                    dao.deleteByTid(oldTid)
+                    dao.insert(existing.copy(filePath = newDir.absolutePath, lastModified = newDir.lastModified()))
                 }
                 reconcileWithDisk(space)
                 newDir
             }
 
         /**
-         * Dissolve a group: move every member back to the month directory and
-         * delete the now-empty group directory. Files are preserved.
+         * Dissolve a group: move every member back to the group's parent location
+         * and delete the now-empty group directory. Members' parentId is reparented
+         * to the dissolved group's own parentId (nesting-aware).
          */
         suspend fun dissolveGroup(groupDir: File, space: Space) =
             withContext(Dispatchers.IO) {
-                val oldPath = groupDir.absolutePath
-                val members = dao.getEntriesInGroupSnapshot(oldPath)
+                val groupTid = Tid.tidOfStem(groupDir.name)
+                val groupRow = dao.findByTid(groupTid)
+                val newParentId = groupRow?.parentId
                 storageEngine.dissolveGroup(groupDir)
-                val monthDir = groupDir.parentFile
-                members.forEach { entity ->
-                    val movedFile = File(monthDir, entity.filePath.substringAfterLast('/'))
-                    dao.deleteByPath(entity.filePath)
-                    dao.insert(
-                        entity.copy(
-                            filePath = movedFile.absolutePath,
-                            groupPath = null,
-                            lastModified = movedFile.lastModified(),
-                        ),
-                    )
+                // Reparent all direct members to the dissolved group's parent.
+                dao.getMembersSnapshot(groupTid).forEach { member ->
+                    dao.deleteByTid(member.tid)
+                    dao.insert(member.copy(parentId = newParentId))
                 }
+                if (groupRow != null) dao.deleteByTid(groupTid)
                 reconcileWithDisk(space)
             }
 
@@ -671,13 +738,9 @@ class MindDumpRepository
         suspend fun moveToGroup(entry: MindDumpEntry, groupDir: File) =
             withContext(Dispatchers.IO) {
                 val newFile = storageEngine.moveToGroup(entry.file, groupDir)
+                val groupTid = Tid.tidOfStem(groupDir.name)
                 val meta = FileMetadata.fromFile(newFile)!!
-                val updatedEntry = entry.copy(
-                    file = newFile,
-                    groupPath = groupDir.absolutePath,
-                )
-                dao.deleteByPath(entry.file.absolutePath)
-                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+                moveEntryRow(entry, newFile, meta.isEncrypted) { it.copy(parentId = groupTid) }
             }
 
         /**
@@ -686,14 +749,32 @@ class MindDumpRepository
         suspend fun moveOutOfGroup(entry: MindDumpEntry, space: Space) =
             withContext(Dispatchers.IO) {
                 val newFile = storageEngine.moveOutOfGroup(entry.file, space)
-                val updatedEntry = entry.copy(
-                    file = newFile,
-                    groupPath = null,
-                )
                 val meta = FileMetadata.fromFile(newFile)!!
-                dao.deleteByPath(entry.file.absolutePath)
-                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+                moveEntryRow(entry, newFile, meta.isEncrypted) { it.copy(parentId = null) }
             }
+
+        /**
+         * Re-index an entry row after its file moved: delete the old path row,
+         * insert at the new path with the [transform] applied (e.g. parentId change).
+         */
+        private suspend fun moveEntryRow(
+            entry: MindDumpEntry,
+            newFile: File,
+            isEncrypted: Boolean,
+            transform: (EntryEntity) -> EntryEntity,
+        ) {
+            dao.deleteByPath(entry.file.absolutePath)
+            dao.insert(
+                transform(
+                    entry
+                        .copy(file = newFile)
+                        .toEntity(
+                            contentPreview = contentPreviewOf(entry.copy(file = newFile)),
+                            isEncrypted = isEncrypted,
+                        ).copy(lastModified = newFile.lastModified()),
+                ),
+            )
+        }
 
         /**
          * Move an entry between Public and Private spaces.
@@ -723,14 +804,9 @@ class MindDumpRepository
                 }
 
                 val meta = FileMetadata.fromFile(finalFile)!!
-                val updatedEntry = entry.copy(
-                    file = finalFile,
-                    space = targetSpace,
-                    monthFolder = finalFile.parentFile?.name ?: "",
-                    groupPath = null, // Moving between spaces leaves group
-                )
-                dao.deleteByPath(entry.file.absolutePath)
-                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
+                moveEntryRow(entry, finalFile, meta.isEncrypted) {
+                    it.copy(space = targetSpace, monthFolder = monthFolderOf(finalFile), parentId = null)
+                }
             }
 
         /**
@@ -740,10 +816,8 @@ class MindDumpRepository
             withContext(Dispatchers.IO) {
                 val newFile = storageEngine.renameEntry(entry.file, newName)
                 val meta = FileMetadata.fromFile(newFile)!!
-                val updatedEntry = entry.copy(file = newFile)
-                dao.deleteByPath(entry.file.absolutePath)
-                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
-                updatedEntry
+                moveEntryRow(entry, newFile, meta.isEncrypted) { it }
+                entry.copy(file = newFile)
             }
 
         /**
@@ -755,10 +829,8 @@ class MindDumpRepository
             withContext(Dispatchers.IO) {
                 val newFile = storageEngine.setEntryPinned(entry.file, pinned)
                 val meta = FileMetadata.fromFile(newFile)!!
-                val updatedEntry = entry.copy(file = newFile, isPinned = pinned)
-                dao.deleteByPath(entry.file.absolutePath)
-                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
-                updatedEntry
+                moveEntryRow(entry, newFile, meta.isEncrypted) { it.copy(isPinned = pinned) }
+                entry.copy(file = newFile, isPinned = pinned)
             }
 
         /**
@@ -769,30 +841,26 @@ class MindDumpRepository
             withContext(Dispatchers.IO) {
                 val newFile = storageEngine.setEntryStatus(entry.file, state)
                 val meta = FileMetadata.fromFile(newFile)!!
-                val updatedEntry = entry.copy(file = newFile, todoState = state)
-                dao.deleteByPath(entry.file.absolutePath)
-                dao.insert(updatedEntry.toEntity(isEncrypted = meta.isEncrypted))
-                updatedEntry
+                moveEntryRow(entry, newFile, meta.isEncrypted) { it.copy(todoState = state) }
+                entry.copy(file = newFile, todoState = state)
             }
 
         /**
-         * Toggle the pin state of a group directory and re-index every member
-         * row so group paths update.
+         * Toggle the pin state of a group directory: rename on disk + update only
+         * the group row (members' parentId unchanged).
          */
         suspend fun setGroupPinned(groupDir: File, space: Space, pinned: Boolean): File =
             withContext(Dispatchers.IO) {
-                val oldPath = groupDir.absolutePath
-                val members = dao.getEntriesInGroupSnapshot(oldPath)
+                val groupTid = Tid.tidOfStem(groupDir.name)
                 val newDir = storageEngine.setGroupPinned(groupDir, pinned)
-                val newPath = newDir.absolutePath
-                members.forEach { entity ->
-                    val movedFile = File(newPath, entity.filePath.substringAfterLast('/'))
-                    dao.deleteByPath(entity.filePath)
+                val existing = dao.findByTid(groupTid)
+                if (existing != null) {
+                    dao.deleteByTid(groupTid)
                     dao.insert(
-                        entity.copy(
-                            filePath = movedFile.absolutePath,
-                            groupPath = newPath,
-                            lastModified = movedFile.lastModified(),
+                        existing.copy(
+                            filePath = newDir.absolutePath,
+                            isPinned = pinned,
+                            lastModified = newDir.lastModified(),
                         ),
                     )
                 }
@@ -801,22 +869,21 @@ class MindDumpRepository
             }
 
         /**
-         * Set the todo status of a group directory and re-index members.
+         * Set the todo status of a group directory: rename on disk + update only
+         * the group row (members' parentId unchanged).
          */
         suspend fun setGroupStatus(groupDir: File, space: Space, state: TodoState): File =
             withContext(Dispatchers.IO) {
-                val oldPath = groupDir.absolutePath
-                val members = dao.getEntriesInGroupSnapshot(oldPath)
+                val groupTid = Tid.tidOfStem(groupDir.name)
                 val newDir = storageEngine.setGroupStatus(groupDir, state)
-                val newPath = newDir.absolutePath
-                members.forEach { entity ->
-                    val movedFile = File(newPath, entity.filePath.substringAfterLast('/'))
-                    dao.deleteByPath(entity.filePath)
+                val existing = dao.findByTid(groupTid)
+                if (existing != null) {
+                    dao.deleteByTid(groupTid)
                     dao.insert(
-                        entity.copy(
-                            filePath = movedFile.absolutePath,
-                            groupPath = newPath,
-                            lastModified = movedFile.lastModified(),
+                        existing.copy(
+                            filePath = newDir.absolutePath,
+                            todoState = state,
+                            lastModified = newDir.lastModified(),
                         ),
                     )
                 }
@@ -833,20 +900,39 @@ class MindDumpRepository
             withContext(Dispatchers.IO) {
                 Timber.d("Trashing entry: %s", entry.file.name)
                 storageEngine.trashEntry(entry)
-                dao.deleteByPath(entry.file.absolutePath)
+                if (entry.role == com.chin.minddump.storage.EntryRole.COMMENT) {
+                    dao.deleteCommentByPath(entry.file.absolutePath)
+                } else {
+                    dao.deleteByPath(entry.file.absolutePath)
+                }
             }
 
         /**
          * Soft-delete a group directory: move the whole tree into `.trash/` and drop
-         * every member row. Members travel with the group and restore together.
+         * every member + the group row. Members travel with the group and restore together.
          */
         suspend fun deleteGroup(groupDir: File, space: Space) =
             withContext(Dispatchers.IO) {
                 Timber.d("Trashing group: %s", groupDir.name)
-                val members = dao.getEntriesInGroupSnapshot(groupDir.absolutePath)
+                val groupTid = Tid.tidOfStem(groupDir.name)
+                // Drop the group row and all descendants (cascades via the parent chain).
+                deleteGroupSubtree(groupTid)
                 storageEngine.trashGroup(groupDir, space)
-                members.forEach { dao.deleteByPath(it.filePath) }
             }
+
+        /** Delete a group row and every descendant entry row beneath it. */
+        private suspend fun deleteGroupSubtree(rootTid: Long) {
+            val stack = ArrayDeque<Long>()
+            stack.addLast(rootTid)
+            while (stack.isNotEmpty()) {
+                val tid = stack.removeLast()
+                dao.getMembersSnapshot(tid).forEach { child ->
+                    if (child.type == com.chin.minddump.storage.EntryType.GROUP) stack.addLast(child.tid)
+                    dao.deleteByTid(child.tid)
+                }
+                dao.deleteByTid(tid)
+            }
+        }
 
         /**
          * Restore a trashed item back to its live location, then reconcile so the
@@ -954,13 +1040,14 @@ class MindDumpRepository
          */
         suspend fun getGroupMemberEntries(groupDir: File): List<MindDumpEntry> =
             withContext(Dispatchers.IO) {
-                dao.getEntriesInGroupSnapshot(groupDir.absolutePath).map { it.toEntry() }
+                val groupTid = dao.tidOfGroup(groupDir.absolutePath) ?: return@withContext emptyList()
+                dao.getMembersSnapshot(groupTid).map { it.toEntry(tags = dao.tagsFor(it.tid)) }
             }
 
         /**
          * Wipe the database and repopulate it entirely from disk.
          * Files are the source of truth — nothing on disk is touched.
-         * Clears both spaces then re-scans them, and rebuilds the FTS index.
+         * Clears all four tables then re-scans both spaces, and rebuilds FTS.
          */
         suspend fun rebuildDatabase() =
             withContext(Dispatchers.IO) {
@@ -974,8 +1061,10 @@ class MindDumpRepository
 
         /**
          * Bidirectional reconcile: sync Room with actual filesystem state.
-         * Derives role, targetTimestamp, groupPath from disk using FileMetadata.
+         * Single-pass: tid/parentId are derivable from filenames, so no insert
+         * ordering is needed. Comments resolve their targetTid against scanned owners.
          */
+        @Suppress("CyclomaticComplexity", "LongMethod")
         suspend fun reconcileWithDisk(space: Space) =
             withContext(Dispatchers.IO) {
                 Timber.d("Reconciling entries from disk for %s", space.name)
@@ -985,80 +1074,73 @@ class MindDumpRepository
                 val diskEntries = storageEngine.scanEntries(space)
                 val diskPathMap = diskEntries.associateBy { it.file.absolutePath }
                 val dbEntities = dao.getAllSnapshot(space)
-                val dbPathMap = dbEntities.associateBy { it.filePath }
+                val dbComments = dao.getCommentsSnapshot(space).associateBy { it.filePath }
 
-                // 1. Insert new (disk has, DB doesn't)
-                val toInsert = diskEntries.filter { it.file.absolutePath !in dbPathMap }
-                if (toInsert.isNotEmpty()) {
-                    dao.insertAll(
-                        toInsert.map { entry ->
-                            val preview = contentPreviewOf(entry)
-                            val isEncrypted = cryptoEngine.isEncryptedFile(entry.file)
-                            // Derive targetTimestamp for comments from disk
-                            val targetTs = if (entry.role == EntryRole.COMMENT) {
-                                entry.timestamp // Already set by scanEntries
-                            } else {
-                                null
-                            }
-                            entry
-                                .copy(targetTimestamp = targetTs)
-                                .toEntity(
-                                    contentPreview = preview,
-                                    isEncrypted = isEncrypted,
-                                ).copy(lastModified = effectiveLastModified(entry))
-                        },
+                // Owners (FILE/GROUP) by their second-resolution timestamp prefix, so a
+                // comment's targetTs can resolve to the owner's tid (the owner's collision
+                // offset is not encoded in the comment filename).
+                val ownerTidByTs = diskEntries
+                    .filter { it.role != com.chin.minddump.storage.EntryRole.COMMENT }
+                    .groupBy { it.timestamp }
+
+                fun resolveCommentTargetTid(comment: MindDumpEntry): Long? {
+                    val targetTs = comment.commentTargetTs ?: return null
+                    val candidates = ownerTidByTs[targetTs] ?: return null
+                    return candidates.firstOrNull()?.tid
+                }
+
+                // 1. Insert/update content + group rows (disk has it).
+                val toUpsert = diskEntries
+                    .filter { it.role != com.chin.minddump.storage.EntryRole.COMMENT }
+                toUpsert.forEach { entry ->
+                    val preview = contentPreviewOf(entry)
+                    val isEncrypted = cryptoEngine.isEncryptedFile(entry.file)
+                    dao.deleteByPath(entry.file.absolutePath)
+                    dao.insert(
+                        entry
+                            .toEntity(contentPreview = preview, isEncrypted = isEncrypted)
+                            .copy(lastModified = effectiveLastModified(entry)),
                     )
+                    replaceTagRows(entry.tid, entry.tags)
+                    if (!entry.metaEncrypted) replaceEventRows(entry, entry.events)
                 }
 
-                // 2. Delete orphans (DB has, disk doesn't)
-                val orphanPaths = dbEntities
-                    .filter { it.filePath !in diskPathMap }
-                    .map { it.filePath }
-                if (orphanPaths.isNotEmpty()) {
-                    dao.deleteByPaths(orphanPaths)
-                }
-
-                // 3. Update stale entries (owner OR its sidecar changed since last reconcile)
-                val toUpdate = dbEntities
-                    .filter { dbEntity ->
-                        val diskEntry = diskPathMap[dbEntity.filePath] ?: return@filter false
-                        dbEntity.lastModified != effectiveLastModified(diskEntry)
-                    }.map { dbEntity ->
-                        val diskEntry = diskPathMap[dbEntity.filePath]!!
-                        val preview = if (diskEntry.type == EntryType.TEXT) {
-                            try {
-                                // For encrypted files, skip preview extraction
-                                if (cryptoEngine.isEncryptedFile(diskEntry.file)) ""
-                                else diskEntry.file.readText().take(500)
-                            } catch (_: Exception) {
-                                ""
-                            }
-                        } else {
-                            ""
-                        }
-                        dbEntity.copy(
-                            lastModified = effectiveLastModified(diskEntry),
-                            contentPreview = preview,
-                            isEncrypted = cryptoEngine.isEncryptedFile(diskEntry.file),
-                            groupPath = diskEntry.groupPath,
-                            targetTimestamp = diskEntry.targetTimestamp,
-                            isPinned = diskEntry.isPinned,
-                            todoState = diskEntry.todoState,
-                            tags = EntryTagsCodec.encode(diskEntry.tags),
-                            events = EntryEventCodec.encode(diskEntry.events),
-                            metaEncrypted = diskEntry.metaEncrypted,
+                // 2. Insert/update comment rows, resolving targetTid.
+                diskEntries
+                    .filter { it.role == com.chin.minddump.storage.EntryRole.COMMENT }
+                    .forEach { comment ->
+                        val isEncrypted = cryptoEngine.isEncryptedFile(comment.file)
+                        val targetTid = resolveCommentTargetTid(comment)
+                        dao.deleteCommentByPath(comment.file.absolutePath)
+                        dao.insertComment(
+                            CommentEntity(
+                                tid = comment.tid,
+                                targetTid = targetTid ?: 0L,
+                                filePath = comment.file.absolutePath,
+                                space = space,
+                                contentPreview = commentPreviewOf(comment),
+                                lastModified = comment.file.lastModified(),
+                                isEncrypted = isEncrypted,
+                            ),
                         )
                     }
-                if (toUpdate.isNotEmpty()) {
-                    dao.updateAll(toUpdate)
-                }
+
+                // 3. Delete orphans (DB has, disk doesn't).
+                val orphanEntryPaths = dbEntities
+                    .filter { it.filePath !in diskPathMap }
+                    .map { it.filePath }
+                if (orphanEntryPaths.isNotEmpty()) dao.deleteByPaths(orphanEntryPaths)
+                val orphanCommentPaths = dbComments.values
+                    .filter { it.filePath !in diskPathMap }
+                    .map { it.filePath }
+                orphanCommentPaths.forEach { dao.deleteCommentByPath(it) }
 
                 Timber.d(
-                    "Reconcile %s: +%d inserted, -%d orphans, ~%d updated",
+                    "Reconcile %s: ~%d entries, ~%d comments, -%d orphans",
                     space.name,
-                    toInsert.size,
-                    orphanPaths.size,
-                    toUpdate.size,
+                    toUpsert.size,
+                    diskEntries.count { it.role == com.chin.minddump.storage.EntryRole.COMMENT },
+                    orphanEntryPaths.size,
                 )
             }
 
@@ -1143,18 +1225,37 @@ class MindDumpRepository
         }
 
         /**
-         * The immediate containing group directory for [file], or null if it sits
-         * directly in a month directory. Determined from the parent dir's role.
+         * The tid of the group containing [dir], or null when [dir] is not itself a
+         * group directory (the entry sits at the month-top level). Used to resolve
+         * parentId for a newly written entry.
          */
-        private fun groupPathOf(file: File): String? {
-            val parent = file.parentFile ?: return null
-            return if (FileMetadata.fromFile(parent)?.role == EntryRole.GROUP) parent.absolutePath else null
+        private fun groupTidOf(dir: File?): Long? {
+            val parent = dir ?: return null
+            return if (FileMetadata.fromFile(parent)?.role == com.chin.minddump.storage.EntryRole.GROUP) {
+                Tid.tidOfStem(parent.name)
+            } else {
+                null
+            }
         }
 
         private fun contentPreviewOf(entry: MindDumpEntry): String =
-            if (entry.type == EntryType.TEXT && !cryptoEngine.isEncryptedFile(entry.file)) {
+            if (entry.type == com.chin.minddump.storage.EntryType.TEXT &&
+                !cryptoEngine.isEncryptedFile(entry.file)
+            ) {
                 try {
                     entry.file.readText().take(500)
+                } catch (_: Exception) {
+                    ""
+                }
+            } else {
+                ""
+            }
+
+        /** Preview for a comment file (TEXT body, possibly encrypted). */
+        private fun commentPreviewOf(comment: MindDumpEntry): String =
+            if (!cryptoEngine.isEncryptedFile(comment.file)) {
+                try {
+                    comment.file.readText().take(500)
                 } catch (_: Exception) {
                     ""
                 }

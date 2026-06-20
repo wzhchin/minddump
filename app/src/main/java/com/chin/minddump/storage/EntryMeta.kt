@@ -45,10 +45,3 @@ enum class EventState { PENDING, FIRED, SNOOZED }
 enum class EventTrigger { ONCE }
 
 private val KEY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
-
-/**
- * Separator used to join tags in the DB `tags` column. A control char that no
- * valid tag can contain (tags are limited to letters/digits/CJK/hyphen), so SQL
- * GLOB filtering on the joined string is unambiguous.
- */
-const val META_TAGS_SEPARATOR: String = ""

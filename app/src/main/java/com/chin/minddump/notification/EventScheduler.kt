@@ -16,8 +16,9 @@ import java.io.File
  * `due` time even under Doze. Alarms are cleared on reboot, so [BootCompletedReceiver]
  * re-registers pending events after boot.
  *
- * Alarm identity is derived from the owner file path + event key, so cancel-then-set
- * is idempotent: re-registering the same event replaces rather than duplicates it.
+ * Alarm identity is the event's DB row id (the `events` table primary key), so
+ * cancel-then-set is idempotent: re-registering the same event replaces rather
+ * than duplicates it. The id is stable for the life of the event row.
  */
 class EventScheduler(
     private val context: Context,
@@ -32,21 +33,21 @@ class EventScheduler(
         owner: File,
         ownerName: String,
         space: Space,
-        eventKey: String,
+        eventId: Long,
         dueAtMillis: Long,
         alreadyFired: Boolean,
     ) {
         if (alreadyFired) return
         val now = System.currentTimeMillis()
         if (dueAtMillis <= now) {
-            Timber.d("Skip scheduling past event %s for %s", eventKey, owner.name)
+            Timber.d("Skip scheduling past event %d for %s", eventId, owner.name)
             return
         }
         val am = alarmManager ?: run {
-            Timber.w("No AlarmManager available; cannot schedule event %s", eventKey)
+            Timber.w("No AlarmManager available; cannot schedule event %d", eventId)
             return
         }
-        val pi = buildFirePendingIntent(owner, ownerName, space, eventKey)
+        val pi = buildFirePendingIntent(owner, ownerName, space, eventId)
         am.cancel(pi) // idempotent: cancel any prior alarm for this identity
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             am.setExactAndAllowWhileIdle(
@@ -57,43 +58,31 @@ class EventScheduler(
         } else {
             am.setExact(AlarmManager.RTC_WAKEUP, dueAtMillis, pi)
         }
-        Timber.d("Scheduled event %s at %d for %s", eventKey, dueAtMillis, owner.name)
+        Timber.d("Scheduled event %d at %d for %s", eventId, dueAtMillis, owner.name)
     }
 
-    /** Cancel a scheduled event (e.g. when removed or fired). */
-    fun cancel(owner: File, space: Space, eventKey: String) {
+    /** Cancel a scheduled event by its DB row id. */
+    fun cancelById(eventId: Long) {
         val am = alarmManager ?: return
-        am.cancel(buildFirePendingIntent(owner, "", space, eventKey))
+        am.cancel(buildFirePendingIntent(File(""), "", Space.PUBLIC, eventId))
     }
 
     private fun buildFirePendingIntent(
         owner: File,
         ownerName: String,
         space: Space,
-        eventKey: String,
+        eventId: Long,
     ): PendingIntent {
         val intent = Intent(context, EventAlarmReceiver::class.java).apply {
             action = NotificationActions.ACTION_EVENT_FIRE
             putExtra(NotificationActions.EXTRA_OWNER_PATH, owner.absolutePath)
             putExtra(NotificationActions.EXTRA_SPACE, space.name)
-            putExtra(NotificationActions.EXTRA_EVENT_KEY, eventKey)
+            putExtra(NotificationActions.EXTRA_EVENT_ID, eventId)
             putExtra(NotificationActions.EXTRA_OWNER_NAME, ownerName)
         }
-        val requestCode = identityHashCode(owner.absolutePath, eventKey)
+        // Use the event id directly as the request code — one distinct alarm per event.
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        return PendingIntent.getBroadcast(context, requestCode, intent, flags)
-    }
-
-    /**
-     * A stable int identity for the (ownerPath, eventKey) pair. Used as the
-     * PendingIntent request code so each distinct event is independently
-     * cancelable. Deterministic across process restarts.
-     */
-    private fun identityHashCode(ownerPath: String, eventKey: String): Int {
-        var hash = 1
-        for (c in ownerPath) hash = 31 * hash + c.code
-        for (c in eventKey) hash = 31 * hash + c.code
-        return hash
+        return PendingIntent.getBroadcast(context, eventId.toInt(), intent, flags)
     }
 }
 

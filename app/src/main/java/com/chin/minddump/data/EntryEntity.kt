@@ -4,116 +4,178 @@ import androidx.room3.Entity
 import androidx.room3.Index
 import androidx.room3.PrimaryKey
 import com.chin.minddump.storage.EntryEvent
-import com.chin.minddump.storage.EntryMeta
 import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
-import com.chin.minddump.storage.META_TAGS_SEPARATOR
-import com.chin.minddump.storage.MetaYamlCodec
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
 import com.chin.minddump.storage.TodoState
 import java.io.File
 
+/**
+ * Content + group-container rows. COMMENT rows live in [CommentEntity]; a comment
+ * is reconstructed as a [MindDumpEntry] with `role == COMMENT` for the UI.
+ *
+ * Identity is [tid] (rebuild-stable epoch-millis + same-second offset). Membership
+ * and nesting are expressed by [parentId], which references another row's tid (the
+ * owning group for a member, the parent group for a nested group; null at root).
+ */
 @Entity(
     tableName = "entries",
     indices = [
         Index(value = ["filePath"], unique = true),
         Index(value = ["space", "monthFolder"]),
         Index(value = ["space", "type"]),
-        Index(value = ["space", "role"]),
+        Index(value = ["parentId"]),
     ],
 )
 data class EntryEntity(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
+    @PrimaryKey
+    val tid: Long,
     val filePath: String,
     val type: EntryType,
     val space: Space,
     val monthFolder: String,
-    val timestamp: String,
-    val contentPreview: String,
     val lastModified: Long,
     val isEncrypted: Boolean = false,
-    val role: EntryRole = EntryRole.FILE,
-    val targetTimestamp: String? = null,
-    val groupPath: String? = null,
+    val parentId: Long? = null,
     val isPinned: Boolean = false,
     val todoState: TodoState = TodoState.NONE,
-    // Tags joined by META_TAGS_SEPARATOR for SQL filtering; "" when none.
-    val tags: String = "",
-    // Events serialized via MetaYamlCodec (the `events:` block text), "" when none.
-    val events: String = "",
-    // True when a Private sidecar exists but was not decrypted (lazy until unlock).
     val metaEncrypted: Boolean = false,
+    val contentPreview: String = "",
 )
 
-fun EntryEntity.toEntry(): MindDumpEntry =
+fun EntryEntity.toEntry(tags: List<String> = emptyList(), events: List<EntryEvent> = emptyList()): MindDumpEntry =
     MindDumpEntry(
         file = File(filePath),
         type = type,
         space = space,
         monthFolder = monthFolder,
-        timestamp = timestamp,
-        role = role,
-        targetTimestamp = targetTimestamp,
-        groupPath = groupPath,
+        tid = tid,
+        role = if (type == EntryType.GROUP) EntryRole.GROUP else EntryRole.FILE,
+        parentId = parentId,
         isPinned = isPinned,
         todoState = todoState,
-        tags = EntryTagsCodec.decode(tags),
-        events = EntryEventCodec.decode(events),
+        tags = tags,
+        events = events,
         metaEncrypted = metaEncrypted,
     )
 
-fun MindDumpEntry.toEntity(contentPreview: String = "", isEncrypted: Boolean = false): EntryEntity =
+fun MindDumpEntry.toEntity(
+    contentPreview: String = "",
+    isEncrypted: Boolean = false,
+): EntryEntity =
     EntryEntity(
+        tid = tid,
         filePath = file.absolutePath,
         type = type,
         space = space,
         monthFolder = monthFolder,
-        timestamp = timestamp,
-        contentPreview = contentPreview,
         lastModified = file.lastModified(),
         isEncrypted = isEncrypted,
-        role = role,
-        targetTimestamp = targetTimestamp,
-        groupPath = groupPath,
+        parentId = parentId,
         isPinned = isPinned,
         todoState = todoState,
-        tags = EntryTagsCodec.encode(tags),
-        events = EntryEventCodec.encode(events),
         metaEncrypted = metaEncrypted,
+        contentPreview = contentPreview,
     )
 
 /**
- * Encodes/decodes the tag list to/from a separator-joined DB column. The stored
- * form is wrapped with a leading and trailing [META_TAGS_SEPARATOR] sentinel so
- * that SQL `GLOB '*<SEP>tag<SEP>*'` matches any tag position (including a
- * single-tag row) unambiguously.
+ * Comment rows, decoupled from the content/group table. A comment links to its owner
+ * by [targetTid] (the owner's tid). It is reconstructed as a [MindDumpEntry] with
+ * `role == COMMENT` for the UI, so the existing comment presentation is unchanged.
+ *
+ * `tid` derives from the comment's own capture timestamp + collision offset (the
+ * `nowTs` in `{targetTs}-n-{nowTs}.md`); `targetTid` derives from the owner's
+ * `targetTs`. A dangling [targetTid] (owner deleted) renders as an orphan comment.
  */
-object EntryTagsCodec {
-    fun encode(tags: List<String>): String =
-        if (tags.isEmpty()) {
-            ""
-        } else {
-            META_TAGS_SEPARATOR + tags.joinToString(META_TAGS_SEPARATOR) + META_TAGS_SEPARATOR
-        }
+@Entity(
+    tableName = "comments",
+    indices = [
+        Index(value = ["filePath"], unique = true),
+        Index(value = ["targetTid"]),
+    ],
+)
+data class CommentEntity(
+    @PrimaryKey
+    val tid: Long,
+    val targetTid: Long,
+    val filePath: String,
+    val space: Space,
+    val contentPreview: String = "",
+    val lastModified: Long,
+    val isEncrypted: Boolean = false,
+)
 
-    fun decode(stored: String): List<String> {
-        if (stored.isBlank()) return emptyList()
-        return stored
-            .split(META_TAGS_SEPARATOR)
-            .filter { it.isNotEmpty() }
-    }
-}
+fun CommentEntity.toEntry(): MindDumpEntry =
+    MindDumpEntry(
+        file = File(filePath),
+        type = EntryType.TEXT,
+        space = space,
+        monthFolder = "", // comments do not carry a month folder; display uses timestamp
+        tid = tid,
+        role = EntryRole.COMMENT,
+        targetTid = targetTid,
+    )
 
 /**
- * Encodes/decodes the event list to/from the DB column by reusing the YAML
- * codec's `events:` block. Round-trips through [MetaYamlCodec].
+ * Flat tag relation: one row per (owner, tag). Composite primary key gives natural
+ * deduplication. Replaces the former separator-joined `tags` column (and fixes the
+ * empty-`META_TAGS_SEPARATOR` bug). The sidecar on disk remains the authority; this
+ * table is a rebuildable index.
  */
-object EntryEventCodec {
-    fun encode(events: List<EntryEvent>): String =
-        if (events.isEmpty()) "" else MetaYamlCodec.encode(EntryMeta(events = events))
+@Entity(
+    tableName = "tags",
+    primaryKeys = ["tid", "tag"],
+    foreignKeys = [
+        androidx.room3.ForeignKey(
+            entity = EntryEntity::class,
+            parentColumns = ["tid"],
+            childColumns = ["tid"],
+            onDelete = androidx.room3.ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["tag"])],
+)
+data class TagEntity(
+    val tid: Long,
+    val tag: String,
+)
 
-    fun decode(stored: String): List<EntryEvent> =
-        if (stored.isBlank()) emptyList() else MetaYamlCodec.decode(stored).events
-}
+/**
+ * Scheduled-event relation: one row per event. Addressed by the autogen [id] (the
+ * scheduler cancels/re-arms by id). The sidecar remains the authority; this table
+ * is a rebuildable index. Replaces the former YAML-joined `events` column.
+ */
+@Entity(
+    tableName = "events",
+    foreignKeys = [
+        androidx.room3.ForeignKey(
+            entity = EntryEntity::class,
+            parentColumns = ["tid"],
+            childColumns = ["tid"],
+            onDelete = androidx.room3.ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["tid"]), Index(value = ["due"])],
+)
+data class EventEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val tid: Long,
+    val due: String, // ISO local date-time, e.g. 2026-06-20T09:00
+    val state: String, // EventState name
+    val trigger: String, // EventTrigger name
+)
+
+/** Encode/decode between [EntryEvent]s and [EventEntity] rows (the sidecar is authority). */
+fun EntryEvent.toEventEntity(tid: Long): EventEntity =
+    EventEntity(tid = tid, due = due.toString(), state = state.name, trigger = trigger.name)
+
+fun EventEntity.toEntryEvent(): EntryEvent =
+    EntryEvent(
+        due = java.time.LocalDateTime.parse(due),
+        state = com.chin.minddump.storage.EventState
+            .valueOf(state),
+        trigger = com.chin.minddump.storage.EventTrigger
+            .valueOf(trigger),
+    )

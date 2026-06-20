@@ -219,6 +219,7 @@ private fun iconFor(type: EntryType): ImageVector = when (type) {
     EntryType.PHOTO -> Icons.Filled.Image
     EntryType.VIDEO -> Icons.Filled.PlayArrow
     EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
+    EntryType.GROUP -> Icons.AutoMirrored.Filled.InsertDriveFile
     EntryType.UNKNOWN -> Icons.AutoMirrored.Filled.InsertDriveFile
 }
 
