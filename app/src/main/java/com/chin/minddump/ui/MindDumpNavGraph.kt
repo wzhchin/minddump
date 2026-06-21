@@ -15,7 +15,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.chin.minddump.audio.AudioRecorder
-import com.chin.minddump.camera.CameraManager
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.ui.statistics.StatisticsScreen
 import com.chin.minddump.ui.theme.LocalAnimationDuration
@@ -25,8 +24,6 @@ sealed class Screen(
     val route: String
 ) {
     data object Main : Screen("main")
-
-    data object Camera : Screen("camera")
 
     // entryPath query arg (Uri-encoded absolute path) selects edit mode;
     // absent = new-entry mode.
@@ -48,7 +45,6 @@ sealed class Screen(
 @Composable
 fun MindDumpNavGraph(
     viewModel: MindDumpViewModel,
-    cameraManager: CameraManager,
     audioRecorder: AudioRecorder,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
@@ -97,7 +93,6 @@ fun MindDumpNavGraph(
             MainScreen(
                 viewModel = viewModel,
                 audioRecorder = audioRecorder,
-                onNavigateToCamera = { navController.navigate(Screen.Camera.route) },
                 onNavigateToFullscreenEdit = { entryPath ->
                     val route = if (entryPath != null) {
                         Screen.FullscreenEdit.routeWithEntry(entryPath)
@@ -127,15 +122,14 @@ fun MindDumpNavGraph(
             } ?: return@composable
             // Same MainScreen composable as the root feed; only currentDir differs.
             // The route carries which group is open (source of truth for back stack
-            // and process restore). The Camera route is a pushed sibling, so this
-            // composable stays on the back stack during capture — currentGroupDir
-            // is not cleared, and capture lands in this group.
+            // and process restore). Captures launched from within a group page use
+            // the system camera and write into this group's directory (the capture
+            // launchers resolve the open-group dir via the ViewModel).
             MainScreen(
                 viewModel = viewModel,
                 audioRecorder = audioRecorder,
                 currentDir = File(groupPath),
                 onBack = { navController.popBackStack() },
-                onNavigateToCamera = { navController.navigate(Screen.Camera.route) },
                 onNavigateToFullscreenEdit = { entryPath ->
                     val route = if (entryPath != null) {
                         Screen.FullscreenEdit.routeWithEntry(entryPath)
@@ -147,26 +141,6 @@ fun MindDumpNavGraph(
                 onNavigateToGroupDetail = { childPath ->
                     navController.navigate(Screen.GroupDetail.routeWithGroup(childPath))
                 },
-            )
-        }
-
-        composable(Screen.Camera.route) {
-            val photoFile = viewModel.getPhotoFile()
-            val videoFile = viewModel.getVideoFile()
-            photoFile.parentFile?.mkdirs()
-            videoFile.parentFile?.mkdirs()
-            cameraManager.setOutputFiles(
-                photo = photoFile,
-                video = videoFile,
-            )
-            CameraScreen(
-                cameraManager = cameraManager,
-                onClose = { navController.popBackStack() },
-                onCaptured = {
-                    viewModel.onMediaCaptured()
-                    navController.popBackStack()
-                },
-                modifier = Modifier,
             )
         }
 

@@ -1,7 +1,6 @@
 package com.chin.minddump.di
 
 import com.chin.minddump.audio.AudioRecorder
-import com.chin.minddump.camera.CameraManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -15,8 +14,4 @@ object MediaModule {
     @Provides
     @ActivityScoped
     fun provideAudioRecorder(): AudioRecorder = AudioRecorder()
-
-    @Provides
-    @ActivityScoped
-    fun provideCameraManager(): CameraManager = CameraManager()
 }

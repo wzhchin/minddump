@@ -20,6 +20,18 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Package visibility (targetSdk 30+): declaring these intent filters lets
+         resolveActivity() see the camera app, so the system-camera capture launch
+         isn't blocked as "no handler" on Android 11+. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MindDumpApp"
         android:allowBackup="true"

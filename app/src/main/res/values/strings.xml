@@ -76,15 +76,8 @@
 
     <!-- File operations -->
     <string name="cannot_open_file">无法打开文件: %1$s</string>
-
-    <!-- Camera -->
-    <string name="photo_mode">拍照</string>
-    <string name="video_mode">录像</string>
+    <string name="camera_unavailable">系统相机不可用</string>
     <string name="close">关闭</string>
-    <string name="record_video">录像</string>
-    <string name="take_photo">拍照</string>
-    <string name="switch_camera">切换摄像头</string>
-    <string name="flash">闪光灯</string>
 
     <!-- Fullscreen edit -->
     <string name="edit_title">编辑</string>

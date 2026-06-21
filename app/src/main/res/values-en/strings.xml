@@ -76,15 +76,8 @@
 
     <!-- File operations -->
     <string name="cannot_open_file">Cannot open file: %1$s</string>
-
-    <!-- Camera -->
-    <string name="photo_mode">Photo</string>
-    <string name="video_mode">Video</string>
+    <string name="camera_unavailable">System camera unavailable</string>
     <string name="close">Close</string>
-    <string name="record_video">Record</string>
-    <string name="take_photo">Capture</string>
-    <string name="switch_camera">Switch camera</string>
-    <string name="flash">Flash</string>
 
     <!-- Fullscreen edit -->
     <string name="edit_title">Edit</string>

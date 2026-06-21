@@ -11,7 +11,6 @@ compose = "1.11.2"
 # its own version separate from compose-ui.
 compose-icons = "1.7.8"
 compose-material3 = "1.5.0-alpha21"
-camerax = "1.4.1"
 # media3 modules (exoplayer + ui) must share one version. Used for in-app video playback.
 media3 = "1.4.1"
 core-ktx = "1.17.0"
@@ -49,12 +48,6 @@ compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", versi
 compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "compose" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "compose-material3" }
 compose-material-icons = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "compose-icons" }
-
-camerax-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
-camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
-camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
-camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
-camerax-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
 
 # In-app video playback. exoplayer + ui share the media3 version.
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }

@@ -19,7 +19,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +47,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ripple
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -79,6 +83,7 @@ data class InputBarActions(
     val onSubmit: () -> Unit,
     val onRecordClick: () -> Unit,
     val onCameraClick: () -> Unit,
+    val onCameraLongClick: () -> Unit = {},
     val onImportClick: () -> Unit,
     val onSpaceToggle: () -> Unit,
     val onFullscreenClick: () -> Unit = {},
@@ -94,6 +99,7 @@ sealed interface InputBarState {
     data object Sending : InputBarState
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Suppress("LongMethod")
 @Composable
 fun InputBar(
@@ -110,6 +116,7 @@ fun InputBar(
     val onSubmit = actions.onSubmit
     val onRecordClick = actions.onRecordClick
     val onCameraClick = actions.onCameraClick
+    val onCameraLongClick = actions.onCameraLongClick
     val onImportClick = actions.onImportClick
     val onSpaceToggle = actions.onSpaceToggle
     val onFullscreenClick = actions.onFullscreenClick
@@ -225,19 +232,34 @@ fun InputBar(
                     enter = fadeIn(tween(animDuration.short)) + expandVertically(),
                     exit = fadeOut(tween(animDuration.short)) + shrinkVertically(),
                 ) {
-                    FilledTonalIconButton(
-                        onClick = {
-                            haptics.perform(HapticPattern.Tick)
-                            onCameraClick()
-                        },
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
+                    // Short-press → photo capture; long-press → video capture.
+                    // A Box + combinedClickable (not an IconButton, which would
+                    // consume the tap itself) mirrors the entry-card long-press
+                    // pattern and reliably delivers both taps.
+                    val cameraInteraction = remember { MutableInteractionSource() }
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .combinedClickable(
+                                interactionSource = cameraInteraction,
+                                indication = ripple(),
+                                onClick = {
+                                    haptics.perform(HapticPattern.Tick)
+                                    onCameraClick()
+                                },
+                                onLongClick = {
+                                    haptics.perform(HapticPattern.Pop)
+                                    onCameraLongClick()
+                                },
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             Icons.Filled.PhotoCamera,
                             contentDescription = stringResource(R.string.camera_capture),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

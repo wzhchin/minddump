@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.chin.minddump.audio.AudioRecorder
-import com.chin.minddump.camera.CameraManager
 import com.chin.minddump.notification.NotificationActions
 import com.chin.minddump.ui.MindDumpNavGraph
 import com.chin.minddump.ui.MindDumpViewModel
@@ -21,9 +20,6 @@ private val EXTRA_SPACE = NotificationActions.EXTRA_SPACE
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
-    @Inject
-    lateinit var cameraManager: CameraManager
 
     @Inject
     lateinit var audioRecorder: AudioRecorder
@@ -41,7 +37,6 @@ class MainActivity : ComponentActivity() {
             handleLaunchingIntent(vm, intent)
             MindDumpNavGraph(
                 viewModel = vm,
-                cameraManager = cameraManager,
                 audioRecorder = audioRecorder,
             )
         }

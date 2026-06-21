@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.data.MindDumpRepository
@@ -98,7 +99,6 @@ import java.io.File
 fun MainScreen(
     viewModel: MindDumpViewModel = viewModel(),
     audioRecorder: AudioRecorder,
-    onNavigateToCamera: () -> Unit = {},
     onNavigateToFullscreenEdit: (entryPath: String?) -> Unit = {},
     onNavigateToStatistics: () -> Unit = {},
     onNavigateToGroupDetail: (groupPath: String) -> Unit = {},
@@ -210,11 +210,88 @@ fun MainScreen(
             }
         }
 
+    // System-camera photo capture. TakePicture writes the full-res image straight
+    // to the EXTRA_OUTPUT URI (the pre-allocated month-bucket file), so on success
+    // we just reconcile; on cancel we drop an empty pre-allocated file so it never
+    // becomes a phantom entry.
+    val photoCaptureLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+            if (saved) {
+                viewModel.onMediaCaptured()
+            } else {
+                viewModel.getPhotoFile().takeIf { it.exists() && it.length() == 0L }?.delete()
+            }
+        }
+
+    // System-camera video capture. CaptureVideo mirrors the photo contract: the
+    // system camera writes to the EXTRA_OUTPUT URI with its own audio capture, so
+    // a returned video has sound by construction (the embedded-CameraX silent-video
+    // bug is gone).
+    val videoCaptureLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { saved ->
+            if (saved) {
+                viewModel.onMediaCaptured()
+            } else {
+                viewModel.getVideoFile().takeIf { it.exists() && it.length() == 0L }?.delete()
+            }
+        }
+
+    /** A FileProvider content URI for a pre-allocated capture file. */
+    fun captureUri(file: File): Uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file,
+    )
+
+    /** Brief toast when no system camera can resolve a capture intent. */
+    fun showNoCamera() {
+        Toast.makeText(context, context.getString(R.string.camera_unavailable), Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Launch the system camera for a still photo, writing into the pre-allocated
+     * month-bucket file. No resolveActivity guard — on targetSdk 30+ that guard is
+     * unreliable (package visibility) and silently blocked the launch; instead we
+     * let the ActivityResult contract launch and catch [ActivityNotFoundException]
+     * if no camera app handles it.
+     */
+    fun launchSystemCameraPhoto() {
+        val file = viewModel.getPhotoFile()
+        file.parentFile?.mkdirs()
+        runCatching { photoCaptureLauncher.launch(captureUri(file)) }
+            .onFailure { showNoCamera() }
+    }
+
+    /**
+     * Launch the system camera for a video, writing into the pre-allocated
+     * month-bucket file.
+     */
+    fun launchSystemCameraVideo() {
+        val file = viewModel.getVideoFile()
+        file.parentFile?.mkdirs()
+        runCatching { videoCaptureLauncher.launch(captureUri(file)) }
+            .onFailure { showNoCamera() }
+    }
+
+    // Which capture the pending camera-permission grant should launch. Set before
+    // requesting CAMERA, consumed in the launcher's result callback.
+    var pendingCaptureKind by remember { mutableStateOf(CaptureKind.PHOTO) }
+
     val cameraPermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             viewModel.setCameraPermissionGranted(granted)
-            if (granted) onNavigateToCamera()
+            if (!granted) return@rememberLauncherForActivityResult
+            when (pendingCaptureKind) {
+                CaptureKind.PHOTO -> launchSystemCameraPhoto()
+                CaptureKind.VIDEO -> launchSystemCameraVideo()
+            }
         }
+
+    /** Request CAMERA, then launch the matching system-camera capture on grant. */
+    fun requestCameraCapture(kind: CaptureKind) {
+        pendingCaptureKind = kind
+        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
 
     // Request POST_NOTIFICATIONS the first time a user schedules an event (Android 13+).
     val notificationPermissionLauncher =
@@ -271,7 +348,7 @@ fun MainScreen(
     LaunchedEffect(uiState.pendingShortcutAction) {
         when (uiState.pendingShortcutAction) {
             ShortcutAction.NEW_TEXT -> onNavigateToFullscreenEdit(null)
-            ShortcutAction.PHOTO -> cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+            ShortcutAction.PHOTO -> requestCameraCapture(CaptureKind.PHOTO)
             ShortcutAction.RECORD -> audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
             ShortcutAction.OPEN_PUBLIC, ShortcutAction.OPEN_PRIVATE, null -> Unit
         }
@@ -455,7 +532,10 @@ fun MainScreen(
                                     }
                                 },
                                 onCameraClick = {
-                                    cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                    requestCameraCapture(CaptureKind.PHOTO)
+                                },
+                                onCameraLongClick = {
+                                    requestCameraCapture(CaptureKind.VIDEO)
                                 },
                                 onImportClick = { fileImportLauncher.launch(arrayOf("*/*")) },
                                 onSpaceToggle = { viewModel.requestSpaceSwitch() },
@@ -790,6 +870,12 @@ fun MainScreen(
 }
 
 // --- Helper functions ---
+
+/** Which system-camera capture a permission grant should launch. */
+private enum class CaptureKind {
+    PHOTO,
+    VIDEO,
+}
 
 private fun requestStoragePermission(
     launcher: androidx.activity.result.ActivityResultLauncher<Intent>,
