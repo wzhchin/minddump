@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug-build override of the launcher icon background. md_primary is used
+         ONLY by the adaptive launcher icon (the in-app theme derives its brand
+         color from materialKolor, not from md_primary), so recoloring it here
+         flips the dev build's icon to vivid orange without touching app UI.
+         Pair with the debug `ic_launcher_foreground` (white "D" badge). -->
+    <color name="md_primary">#FFFF6E00</color>
+</resources>

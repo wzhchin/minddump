@@ -38,6 +38,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Distinct applicationId + app name/icon so a debug build installs
+            // side-by-side with the signed release build (different signing keys
+            // would otherwise collide). The sourceSet `src/debug` overrides
+            // app_name and the launcher icon for at-a-glance separation.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            isMinifyEnabled = false
+        }
         release {
             // R8 minify + resource shrinking are OFF for faster release builds.
             // Re-enable both (and the proguardFiles below) before a store upload:

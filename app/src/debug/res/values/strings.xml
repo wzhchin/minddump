@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug-only override: distinguish the dev build from the signed release
+         in the launcher (distinct app name + orange "D" badge icon). -->
+    <string name="app_name">MindDump Dev</string>
+</resources>
