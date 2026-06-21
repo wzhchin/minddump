@@ -13,7 +13,6 @@
     <string name="start_recording">Record</string>
     <string name="camera_capture">Photo/Video</string>
     <string name="import_file">Import file</string>
-    <string name="recording">Recording…</string>
     <string name="input_placeholder">Type a thought…</string>
     <string name="fullscreen_edit">Fullscreen edit</string>
     <string name="send">Send</string>

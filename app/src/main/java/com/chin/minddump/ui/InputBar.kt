@@ -53,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -373,7 +374,9 @@ fun InputBar(
 }
 
 /**
- * Recording indicator chip with a pulsing red dot.
+ * Recording indicator chip: a pulsing red dot + a live `mm:ss` elapsed counter.
+ * The chip is recomposed fresh each time recording starts (its enclosing
+ * [AnimatedVisibility] removes it on stop), so the timer resets to 00:00.
  */
 @Composable
 private fun RecordingIndicatorChip() {
@@ -400,6 +403,17 @@ private fun RecordingIndicatorChip() {
         label = "pulse_alpha",
     )
 
+    // Live elapsed seconds. Keyed on the chip itself: produceState re-runs (and
+    // resets to 0) whenever this composable re-enters composition, i.e. when a
+    // new recording starts.
+    val elapsedSec by produceState(initialValue = 0) {
+        val start = System.currentTimeMillis()
+        while (true) {
+            value = ((System.currentTimeMillis() - start) / 1000).toInt()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
     // A purely decorative indicator (status badge), NOT an interactive chip: it
     // uses a Surface + Row so it has no click/toggle semantics, rather than the
     // previous FilterChip(selected = true, onClick = {}) which read as an
@@ -422,7 +436,7 @@ private fun RecordingIndicatorChip() {
                     .background(MaterialTheme.colorScheme.error),
             )
             Text(
-                stringResource(R.string.recording),
+                text = "%02d:%02d".format(elapsedSec / 60, elapsedSec % 60),
                 style = MaterialTheme.typography.labelSmall,
             )
         }

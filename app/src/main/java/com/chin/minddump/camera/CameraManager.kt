@@ -163,6 +163,7 @@ class CameraManager {
         currentRecording =
             recorder
                 .prepareRecording(context, fileOutputOptions)
+                .withAudioEnabled()
                 .start(executor) { recordEvent ->
                     when (recordEvent) {
                         is VideoRecordEvent.Finalize -> {

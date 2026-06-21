@@ -1,6 +1,9 @@
 package com.chin.minddump.ui
 
 import android.view.ViewGroup
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -82,6 +85,37 @@ fun CameraScreen(
     // control. Visual state is kept locally so the control responds, but it does
     // not yet drive the actual capture flash (would need a CameraManager API).
     var flashOn by remember { mutableStateOf(false) }
+
+    // Begin a video recording (audio enabled). Centralized so the shutter handler
+    // and the deferred post-permission callback both route through one path.
+    fun beginVideoRecording() {
+        cameraManager.startVideoRecording(context, lifecycleOwner) {
+            isRecordingVideo = false
+            cameraManager.stopPreview()
+            onCaptured()
+        }
+        isRecordingVideo = true
+    }
+
+    // Video recording captures audio, which needs RECORD_AUDIO at runtime (camera
+    // permission was granted before navigating here, but mic is a separate grant).
+    // Request it on first video start; once granted, begin the recording.
+    val recordAudioLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) beginVideoRecording()
+    }
+    fun startVideoWithAudio() {
+        val hasAudio = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.RECORD_AUDIO,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (hasAudio) {
+            beginVideoRecording()
+        } else {
+            recordAudioLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         // ── Camera preview ──
@@ -247,12 +281,7 @@ fun CameraScreen(
                                 cameraManager.stopPreview()
                                 onCaptured()
                             } else {
-                                cameraManager.startVideoRecording(context, lifecycleOwner) {
-                                    isRecordingVideo = false
-                                    cameraManager.stopPreview()
-                                    onCaptured()
-                                }
-                                isRecordingVideo = true
+                                startVideoWithAudio()
                             }
                         } else {
                             cameraManager.takePhoto(context) {
