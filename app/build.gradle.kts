@@ -39,8 +39,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 minify + resource shrinking are OFF for faster release builds.
+            // Re-enable both (and the proguardFiles below) before a store upload:
+            //   isMinifyEnabled = true
+            //   isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
