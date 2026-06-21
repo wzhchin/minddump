@@ -146,7 +146,7 @@
     <string name="color_purple">Purple</string>
     <string name="color_pink">Pink</string>
 
-    <!-- Group card / comments -->
+    <!-- Group card -->
     <string name="kind_note">Note</string>
     <string name="kind_photo">Photo</string>
     <string name="kind_video">Video</string>
@@ -163,12 +163,6 @@
     <string name="multiselect_count">Selected %1$d</string>
     <string name="multiselect_count_with_groups">Selected %1$d · %2$d groups</string>
     <string name="group_media_preview">Group content preview</string>
-    <string name="comments_expand">▸ %1$d comments</string>
-    <string name="comments_collapse">▾ Hide comments</string>
-    <string name="comment_label">Comment</string>
-    <string name="orphan_comment">Original file deleted</string>
-    <string name="add_comment">Add comment</string>
-    <string name="comment_dialog_placeholder">Write a comment…</string>
     <string name="pin">Pin</string>
     <string name="unpin">Unpin</string>
     <string name="todo_status">Todo status</string>

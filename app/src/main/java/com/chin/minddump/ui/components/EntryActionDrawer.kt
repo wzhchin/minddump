@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -68,7 +67,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.R
 import com.chin.minddump.storage.EntryEvent
-import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.Space
@@ -102,7 +100,6 @@ fun EntryActionDrawer(
     onMoveOutOfGroup: (() -> Unit)? = null,
     onTogglePin: (() -> Unit)? = null,
     onSetStatus: ((TodoState) -> Unit)? = null,
-    onAddComment: ((String) -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onEditTags: (() -> Unit)? = null,
     onAddEvent: (() -> Unit)? = null,
@@ -122,17 +119,15 @@ fun EntryActionDrawer(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showDissolveConfirm by remember { mutableStateOf(false) }
     var showStatusPicker by remember { mutableStateOf(false) }
-    var showCommentDialog by remember { mutableStateOf(false) }
 
     val isGroup = groupTarget != null
-    val isComment = entry?.role == EntryRole.COMMENT
 
     // Target-derived presentation values.
     val groupMeta = groupTarget?.let { FileMetadata.fromFile(it) }
     val headerText = if (isGroup) {
         groupTarget!!
             .name
-            .substringAfter("-g", groupTarget!!.name)
+            .substringAfter("-f", groupTarget!!.name)
             .ifBlank { stringResource(R.string.group_unnamed) }
     } else {
         entry!!.file.name
@@ -173,9 +168,9 @@ fun EntryActionDrawer(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                // Pin toggle — comments cannot be pinned. A pinned entry gets a
-                // primary-tint cue so the state reads without a label.
-                if (!isComment && !isGroup && onTogglePin != null) {
+                // Pin toggle — a pinned entry gets a primary-tint cue so the state
+                // reads without a label.
+                if (!isGroup && onTogglePin != null) {
                     IconButton(onClick = {
                         haptics.perform(HapticPattern.Tick)
                         onTogglePin()
@@ -213,20 +208,7 @@ fun EntryActionDrawer(
                         )
                     }
                 }
-                // Add comment — comments and groups cannot target comments.
-                if (!isComment && !isGroup && onAddComment != null) {
-                    IconButton(onClick = {
-                        haptics.perform(HapticPattern.Tick)
-                        showCommentDialog = true
-                    }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Comment,
-                            contentDescription = stringResource(R.string.add_comment),
-                            tint = onSurfaceTint,
-                        )
-                    }
-                }
-                // Share — the one action comments DO get; exports to other apps.
+                // Share — exports to other apps.
                 if (onShare != null) {
                     IconButton(onClick = {
                         haptics.perform(HapticPattern.Tick)
@@ -278,7 +260,7 @@ fun EntryActionDrawer(
                         )
                     }
                 }
-                if (!isGroup && entry!!.parentId != null && onMoveOutOfGroup != null) {
+                if (!isGroup && entry!!.groupPath != null && onMoveOutOfGroup != null) {
                     IconButton(onClick = {
                         haptics.perform(HapticPattern.Tick)
                         onMoveOutOfGroup()
@@ -315,8 +297,8 @@ fun EntryActionDrawer(
 
             // Detail rows: full-width rows whose trailing summary surfaces state.
 
-            // Todo status — comments cannot carry a status.
-            if (!isComment && onSetStatus != null) {
+            // Todo status.
+            if (onSetStatus != null) {
                 ActionItem(
                     icon = statusIcon(todoState),
                     label = stringResource(R.string.todo_status),
@@ -480,17 +462,6 @@ fun EntryActionDrawer(
                 onDismiss()
             },
             onDismiss = { showStatusPicker = false },
-        )
-    }
-
-    if (showCommentDialog) {
-        CommentDialog(
-            onConfirm = { content ->
-                onAddComment?.invoke(content)
-                showCommentDialog = false
-                onDismiss()
-            },
-            onDismiss = { showCommentDialog = false },
         )
     }
 }
@@ -657,48 +628,6 @@ fun RenameDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("取消")
-            }
-        },
-    )
-}
-
-// ──────────────────────────────────────────────
-// Comment Dialog
-// ──────────────────────────────────────────────
-
-@Composable
-fun CommentDialog(
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val shapes = LocalExpressiveShapes.current
-    var content by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = shapes.cardMedium,
-        title = { Text(stringResource(R.string.add_comment)) },
-        text = {
-            OutlinedTextField(
-                value = content,
-                onValueChange = { content = it },
-                placeholder = { Text(stringResource(R.string.comment_dialog_placeholder)) },
-                minLines = 3,
-                maxLines = 6,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        confirmButton = {
-            TextButton(
-                enabled = content.isNotBlank(),
-                onClick = { onConfirm(content.trim()) },
-            ) {
-                Text(stringResource(R.string.confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
             }
         },
     )

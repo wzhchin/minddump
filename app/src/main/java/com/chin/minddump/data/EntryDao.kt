@@ -44,21 +44,15 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE space = :space AND type = 'GROUP' ORDER BY lastModified DESC")
     fun getGroups(space: Space): Flow<List<EntryEntity>>
 
-    @Query("SELECT * FROM entries WHERE space = :space AND parentId IS :parentId ORDER BY lastModified DESC")
-    fun getMembers(space: Space, parentId: Long?): Flow<List<EntryEntity>>
+    /** Direct members of a group (groupPath = the group's path), or all root-level entries when null. */
+    @Query("SELECT * FROM entries WHERE space = :space AND groupPath IS :groupPath ORDER BY lastModified DESC")
+    fun getMembers(space: Space, groupPath: String?): Flow<List<EntryEntity>>
 
-    @Query("SELECT * FROM entries WHERE parentId IS :parentId")
-    suspend fun getMembersSnapshot(parentId: Long?): List<EntryEntity>
+    @Query("SELECT * FROM entries WHERE groupPath IS :groupPath")
+    suspend fun getMembersSnapshot(groupPath: String?): List<EntryEntity>
 
     @Query("SELECT * FROM entries WHERE filePath = :filePath LIMIT 1")
     suspend fun findByPath(filePath: String): EntryEntity?
-
-    @Query("SELECT * FROM entries WHERE tid = :tid LIMIT 1")
-    suspend fun findByTid(tid: Long): EntryEntity?
-
-    /** Resolve a group directory's tid by its absolute path. */
-    @Query("SELECT tid FROM entries WHERE filePath = :groupPath AND type = 'GROUP' LIMIT 1")
-    suspend fun tidOfGroup(groupPath: String): Long?
 
     // Substring search via GLOB on the raw contentPreview column. GLOB compares
     // the original text directly, so CJK characters match as a contiguous run
@@ -73,11 +67,11 @@ interface EntryDao {
     )
     fun search(space: Space, pattern: String): Flow<List<EntryEntity>>
 
-    /** Owner tids in [space] carrying [tag]; the repository joins tags to entries. */
+    /** Owners in [space] carrying [tag]; the repository joins tags to entries by filePath. */
     @Query(
         """
         SELECT DISTINCT e.* FROM entries e
-        INNER JOIN tags t ON e.tid = t.tid
+        INNER JOIN tags t ON e.filePath = t.filePath
         WHERE e.space = :space AND t.tag = :tag
         ORDER BY e.lastModified DESC
         """,
@@ -99,9 +93,6 @@ interface EntryDao {
     @Query("DELETE FROM entries WHERE filePath IN (:paths)")
     suspend fun deleteByPaths(paths: List<String>)
 
-    @Query("DELETE FROM entries WHERE tid = :tid")
-    suspend fun deleteByTid(tid: Long)
-
     @Query("DELETE FROM entries")
     suspend fun clearEntries()
 
@@ -114,56 +105,39 @@ interface EntryDao {
     @Query("SELECT COUNT(*) FROM entries WHERE space = :space")
     fun countFlow(space: Space): Flow<Int>
 
-    // ── comments ──
-
-    @Query("SELECT * FROM comments WHERE targetTid = :targetTid ORDER BY lastModified DESC")
-    fun getCommentsFor(targetTid: Long): Flow<List<CommentEntity>>
-
-    @Query("SELECT * FROM comments WHERE targetTid = :targetTid")
-    suspend fun getCommentsForSnapshot(targetTid: Long): List<CommentEntity>
-
-    @Query("SELECT * FROM comments WHERE space = :space")
-    suspend fun getCommentsSnapshot(space: Space): List<CommentEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertComment(comment: CommentEntity)
-
-    @Query("DELETE FROM comments WHERE filePath = :filePath")
-    suspend fun deleteCommentByPath(filePath: String)
-
-    @Query("DELETE FROM comments WHERE tid = :tid")
-    suspend fun deleteCommentByTid(tid: Long)
-
-    @Query("DELETE FROM comments")
-    suspend fun clearComments()
-
     // ── tags ──
 
-    @Query("SELECT tag FROM tags WHERE tid = :tid")
-    suspend fun tagsFor(tid: Long): List<String>
+    @Query("SELECT tag FROM tags WHERE filePath = :filePath")
+    suspend fun tagsFor(filePath: String): List<String>
 
-    @Query("SELECT DISTINCT tag FROM tags WHERE tid IN (SELECT tid FROM entries WHERE space = :space) ORDER BY tag")
+    @Query(
+        """
+        SELECT DISTINCT tag FROM tags
+        WHERE filePath IN (SELECT filePath FROM entries WHERE space = :space)
+        ORDER BY tag
+        """,
+    )
     suspend fun distinctTags(space: Space): List<String>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTags(tags: List<TagEntity>)
 
-    @Query("DELETE FROM tags WHERE tid = :tid")
-    suspend fun deleteTagsFor(tid: Long)
+    @Query("DELETE FROM tags WHERE filePath = :filePath")
+    suspend fun deleteTagsFor(filePath: String)
 
     @Query("DELETE FROM tags")
     suspend fun clearTags()
 
     /** Replace an owner's tag rows atomically. */
-    suspend fun setTags(tid: Long, tags: List<String>) {
-        deleteTagsFor(tid)
-        if (tags.isNotEmpty()) insertTags(tags.map { TagEntity(tid, it) })
+    suspend fun setTags(filePath: String, tags: List<String>) {
+        deleteTagsFor(filePath)
+        if (tags.isNotEmpty()) insertTags(tags.map { TagEntity(filePath, it) })
     }
 
     // ── events ──
 
-    @Query("SELECT * FROM events WHERE tid = :tid")
-    suspend fun eventsFor(tid: Long): List<EventEntity>
+    @Query("SELECT * FROM events WHERE filePath = :filePath")
+    suspend fun eventsFor(filePath: String): List<EventEntity>
 
     @Query("SELECT * FROM events WHERE state = 'PENDING'")
     suspend fun pendingEvents(): List<EventEntity>
@@ -174,25 +148,24 @@ interface EntryDao {
     @Query("DELETE FROM events WHERE id = :id")
     suspend fun deleteEventById(id: Long)
 
-    @Query("DELETE FROM events WHERE tid = :tid")
-    suspend fun deleteEventsFor(tid: Long)
+    @Query("DELETE FROM events WHERE filePath = :filePath")
+    suspend fun deleteEventsFor(filePath: String)
 
     @Query("DELETE FROM events")
     suspend fun clearEvents()
 
     /** Replace an owner's event rows atomically, returning the inserted rows (with ids). */
-    suspend fun setEvents(tid: Long, events: List<EventEntity>): List<EventEntity> {
-        deleteEventsFor(tid)
+    suspend fun setEvents(filePath: String, events: List<EventEntity>): List<EventEntity> {
+        deleteEventsFor(filePath)
         return if (events.isEmpty()) emptyList() else events.also { insertEvents(it) }
     }
 
     // ── all tables ──
 
-    /** Drop every row across all four tables — used by the full rebuild-from-disk path. */
+    /** Drop every row across entries/tags/events — used by the full rebuild-from-disk path. */
     suspend fun clearAll() {
         clearTags()
         clearEvents()
-        clearComments()
         clearEntries()
     }
 
@@ -201,9 +174,9 @@ interface EntryDao {
     suspend fun rebuildFtsIndex()
 
     // ── Statistics queries ──
-    // `tid` is epoch-millis; derive date/hour from it via strftime (unix epoch in
-    // seconds = tid/1000). 'localtime' converts UTC epoch to the device timezone,
-    // matching how timestamps were captured and displayed before.
+    // lastModified is epoch-millis (the file mtime); derive date/hour from it via
+    // strftime (unix epoch in seconds = lastModified/1000). 'localtime' converts
+    // UTC epoch to the device timezone, matching how the file was captured.
 
     /** Entry count grouped by YYYY-MM month folder, ordered by month descending. */
     @Query(
@@ -229,10 +202,10 @@ interface EntryDao {
     )
     fun getEntryCountByType(space: Space): Flow<List<TypeCount>>
 
-    /** Entry count grouped by hour of day, derived from the epoch-millis tid. */
+    /** Entry count grouped by hour of day, derived from the epoch-millis lastModified. */
     @Query(
         """
-        SELECT CAST(strftime('%H', tid / 1000, 'unixepoch', 'localtime') AS INTEGER) as hour,
+        SELECT CAST(strftime('%H', lastModified / 1000, 'unixepoch', 'localtime') AS INTEGER) as hour,
                COUNT(*) as count
         FROM entries
         WHERE space = :space AND type != 'GROUP'

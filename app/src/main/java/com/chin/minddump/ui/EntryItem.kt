@@ -1,6 +1,5 @@
 package com.chin.minddump.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
@@ -65,7 +64,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.chin.minddump.R
-import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
@@ -101,8 +99,7 @@ private val CARD_RHYTHM = 12.dp
 // ──────────────────────────────────────────────
 
 /**
- * One row in the time-ordered feed: either a loose entry (with its nested comments)
- * or a group summary card.
+ * One row in the time-ordered feed: either a loose entry or a group summary card.
  */
 sealed interface FeedItem {
     val sortKey: Long
@@ -213,7 +210,6 @@ fun EntryList(
                     groupedEntry = item.grouped,
                     onClick = { onEntryClick(item.grouped.entry) },
                     onLongClick = { onEntryLongClick(item.grouped.entry) },
-                    onCommentClick = { comment -> onEntryClick(comment) },
                     isMultiSelectMode = isMultiSelectMode,
                     isSelected = item.grouped.entry in selectedEntries,
                     modifier = Modifier.animateItem(
@@ -420,16 +416,13 @@ private fun CarouselMediaTile(
 }
 
 /**
- * Renders a file entry as a single card with its comments folded inside it (an
- * expandable list). Orphan comments — whose parent file was deleted — get a
- * special indicator inside the card.
+ * Renders a file entry as a single card (head · body · foot zones).
  */
 @Composable
 fun GroupedEntryItem(
     groupedEntry: GroupedEntry,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onCommentClick: (MindDumpEntry) -> Unit,
     isMultiSelectMode: Boolean = false,
     isSelected: Boolean = false,
     modifier: Modifier = Modifier,
@@ -440,53 +433,8 @@ fun GroupedEntryItem(
         onLongClick = onLongClick,
         isMultiSelectMode = isMultiSelectMode,
         isSelected = isSelected,
-        comments = groupedEntry.comments,
-        onCommentClick = onCommentClick,
-        isOrphanComment = groupedEntry.entry.role == EntryRole.COMMENT,
         modifier = modifier,
     )
-}
-
-// ──────────────────────────────────────────────
-// Comments — collapsed in-card list
-// ──────────────────────────────────────────────
-
-/**
- * One expanded comment: a timestamp + a few-line content preview. Tapping opens it.
- */
-@Composable
-private fun CommentPreview(
-    comment: MindDumpEntry,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .combinedClickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Text(
-            text = formatRelativeTimestamp(comment.monthFolder, comment.timestamp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(end = 8.dp),
-        )
-        val commentText by produceState<String?>(initialValue = null, key1 = comment.file) {
-            value = withContext(Dispatchers.IO) {
-                runCatching { comment.file.readText().take(500) }.getOrNull()
-            }
-        }
-        Text(
-            text = commentText ?: stringResource(R.string.content_loading),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-            modifier = Modifier.weight(1f),
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
 }
 
 // ──────────────────────────────────────────────
@@ -501,9 +449,6 @@ fun EntryItem(
     onLongClick: () -> Unit,
     isMultiSelectMode: Boolean = false,
     isSelected: Boolean = false,
-    comments: List<MindDumpEntry> = emptyList(),
-    onCommentClick: (MindDumpEntry) -> Unit = {},
-    isOrphanComment: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val haptics = rememberPremiumHaptics()
@@ -568,25 +513,11 @@ fun EntryItem(
             else -> FileEntryContent(entry)
         }
 
-        // ── FOOT (tags + reminder + comments; omitted in multi-select / when empty) ──
+        // ── FOOT (tags + reminder; omitted in multi-select / when empty) ──
         val hasFooter = !isMultiSelectMode &&
-            (entry.tags.isNotEmpty() || entry.events.isNotEmpty() || comments.isNotEmpty())
+            (entry.tags.isNotEmpty() || entry.events.isNotEmpty())
         if (hasFooter) {
-            EntryCardMetaFooter(
-                entry = entry,
-                comments = comments,
-                onCommentClick = onCommentClick,
-            )
-        }
-
-        // ── Orphan-comment indicator (its parent file was deleted) ──
-        if (!isMultiSelectMode && isOrphanComment) {
-            Text(
-                text = stringResource(R.string.orphan_comment),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.padding(start = CARD_INSET, bottom = CARD_INSET),
-            )
+            EntryCardMetaFooter(entry = entry)
         }
     }
 }
@@ -1258,16 +1189,12 @@ private fun CardChipRow(
 @Composable
 private fun EntryCardMetaFooter(
     entry: MindDumpEntry,
-    comments: List<MindDumpEntry>,
-    onCommentClick: (MindDumpEntry) -> Unit,
 ) {
     val reminderDue = nextEventDue(entry.events)
     val reminderEvent = remember(entry.events, reminderDue) {
         if (reminderDue == null) null
         else entry.events.firstOrNull { it.due == reminderDue }
     }
-    var commentsExpanded by remember { mutableStateOf(false) }
-    val haptics = rememberPremiumHaptics()
 
     Column(
         modifier = Modifier
@@ -1314,45 +1241,6 @@ private fun EntryCardMetaFooter(
                         MaterialTheme.colorScheme.onPrimaryContainer
                     },
                 )
-            }
-            if (comments.isNotEmpty()) {
-                val label = if (commentsExpanded) {
-                    stringResource(R.string.comments_collapse)
-                } else {
-                    stringResource(R.string.comments_expand, comments.size)
-                }
-                MetaChip(
-                    text = label,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    leadingIcon = Icons.Filled.Edit,
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable {
-                        haptics.perform(HapticPattern.Tick)
-                        commentsExpanded = !commentsExpanded
-                    },
-                )
-            }
-        }
-
-        // Expanded comment previews live directly under the chip row so the
-        // whole meta footer is one self-contained block.
-        AnimatedVisibility(visible = commentsExpanded && comments.isNotEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                comments.forEach { comment ->
-                    CommentPreview(
-                        comment = comment,
-                        onClick = {
-                            haptics.perform(HapticPattern.Tick)
-                            onCommentClick(comment)
-                        },
-                    )
-                }
             }
         }
     }

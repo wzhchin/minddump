@@ -146,7 +146,7 @@
     <string name="color_purple">紫</string>
     <string name="color_pink">粉</string>
 
-    <!-- Group card / comments -->
+    <!-- Group card -->
     <string name="kind_note">笔记</string>
     <string name="kind_photo">照片</string>
     <string name="kind_video">视频</string>
@@ -163,12 +163,6 @@
     <string name="multiselect_count">已选 %1$d 项</string>
     <string name="multiselect_count_with_groups">已选 %1$d 项 · 含 %2$d 分组</string>
     <string name="group_media_preview">分组内容预览</string>
-    <string name="comments_expand">▸ %1$d 条评论</string>
-    <string name="comments_collapse">▾ 收起评论</string>
-    <string name="comment_label">评论</string>
-    <string name="orphan_comment">原始文件已删除</string>
-    <string name="add_comment">添加评论</string>
-    <string name="comment_dialog_placeholder">写评论…</string>
     <string name="pin">置顶</string>
     <string name="unpin">取消置顶</string>
     <string name="todo_status">待办状态</string>

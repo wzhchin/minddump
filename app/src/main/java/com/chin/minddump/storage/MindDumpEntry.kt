@@ -3,40 +3,42 @@ package com.chin.minddump.storage
 import java.io.File
 
 /**
- * Represents a single entry (file) in MindDump — the in-memory domain type served
- * to the UI. It unifies rows from the `entries` and `comments` tables: a comment
- * is reconstructed with [role] == COMMENT so the existing comment UI works without
- * knowing which table it came from. The DB itself has no `role` column (entry kind
- * is expressed by [type], which gains a GROUP value for directory containers).
+ * Represents a single entry in MindDump — the in-memory domain type served
+ * to the UI. There are only two physical kinds: a file (a note) and a directory
+ * (a group). Comments are removed. The DB has no `role` column; kind is
+ * expressed by [type], which carries a GROUP value for directory containers.
  *
- * Identity is [tid], the rebuild-stable epoch-millis primary key. Group membership
- * and nesting are expressed by [parentId] (the owning/nesting group's tid), which
- * replaces the former absolute-path `groupPath` string.
+ * Identity is the file path: the OS guarantees uniqueness within a directory,
+ * and the path is what the user sees, `grep`s, and moves. There is no
+ * synthesized `tid` — see `restrained-file-storage` for why it was removed.
+ * Group membership is positional: a note "is in" a group because its file sits
+ * in that group directory, captured here as [groupPath] (the owning group
+ * directory's absolute path, null at the month-bucket root). Groups are
+ * single-level. A `workDir` move always triggers a full DB rebuild, so absolute
+ * paths re-root at rebuild time without staleness.
+ *
+ * [timestamp] is recovered from the filename (the leading `yyMM-dd-HHMMSS`
+ * segment) for display and sorting — it is NOT an identity.
  */
 data class MindDumpEntry(
     val file: File,
     val type: EntryType,
     val space: Space,
     val monthFolder: String, // YYYY-MM
-    val tid: Long, // epoch-millis + same-second offset; rebuild-stable PK
-    val role: EntryRole = EntryRole.FILE, // in-memory only; NOT a DB column. GROUP→type, comment→COMMENT
-    val parentId: Long? = null, // Owning group's tid (membership) or parent group's tid (nesting); null at root
-    val targetTid: Long? = null, // For comments: the owner entry's tid
-    val commentTargetTs: String? = null, // Transient: owner targetTs before targetTid resolution (comments only)
+    val role: EntryRole = EntryRole.FILE, // in-memory only; NOT a DB column. GROUP→type.
+    val groupPath: String? = null, // Owning group dir absolute path; null at month-top root
     val isPinned: Boolean = false, // Encoded as a `9999-` filename prefix
     val todoState: TodoState = TodoState.NONE, // Encoded as a status token in the filename
-    val tags: List<String> = emptyList(), // From the `m` sidecar (served from the tags table)
-    val events: List<EntryEvent> = emptyList(), // From the `m` sidecar (served from the events table)
+    val tags: List<String> = emptyList(), // From the `.meta` sidecar (served from the tags table)
+    val events: List<EntryEvent> = emptyList(), // From the `.meta` sidecar (served from the events table)
     val metaEncrypted: Boolean = false, // True when a Private sidecar is not yet decrypted
 ) {
-    /** The second-resolution timestamp segment (`yyMM-dd-HHmmss`) recovered from [tid]. */
+    /**
+     * The second-resolution timestamp segment (`yyMM-dd-HHmmss`) parsed from the
+     * filename. For display/sorting only — never an identity.
+     */
     val timestamp: String
-        get() = Tid.TIMESTAMP_FORMAT.format(
-            java.time.Instant
-                .ofEpochMilli(tid)
-                .atZone(java.time.ZoneId.systemDefault())
-                .toLocalDateTime(),
-        )
+        get() = FileMetadata.fromFile(file)?.timestamp ?: ""
 }
 
 enum class Space(
@@ -65,7 +67,7 @@ enum class EntryType {
     PHOTO,
     VIDEO,
     FILE,
-    GROUP, // Directory containers — rows in `entries` whose parent/child links are via parentId
+    GROUP, // Directory containers — rows in `entries` whose membership is via groupPath
     UNKNOWN,
     ;
 
@@ -84,7 +86,6 @@ enum class EntryType {
 /**
  * Todo status encoded as an uppercase token between the timestamp and the role
  * char in a filename. [NONE] writes no token — plain notes are not todos.
- * Only FILE and GROUP roles may carry a status; comments never do.
  */
 enum class TodoState(
     val code: String?,

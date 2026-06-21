@@ -186,14 +186,12 @@ fun MindDumpNavGraph(
             val editEntry: MindDumpEntry? = entryPath?.let { path ->
                 uiState.entries.firstOrNull { it.file.absolutePath == path }
                     ?: File(path).takeIf { it.exists() }?.let { file ->
-                        // Minimal entry: enough for load/save (path + identity).
+                        // Minimal entry: enough for load/save (path is the identity).
                         MindDumpEntry(
                             file = file,
                             type = com.chin.minddump.storage.EntryType.TEXT,
                             space = uiState.currentSpace,
                             monthFolder = file.parentFile?.name ?: "",
-                            tid = com.chin.minddump.storage.Tid
-                                .tidOfStem(file.nameWithoutExtension),
                             role = com.chin.minddump.storage.EntryRole.FILE,
                         )
                     }

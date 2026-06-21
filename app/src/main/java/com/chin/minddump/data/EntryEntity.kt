@@ -1,6 +1,7 @@
 package com.chin.minddump.data
 
 import androidx.room3.Entity
+import androidx.room3.ForeignKey
 import androidx.room3.Index
 import androidx.room3.PrimaryKey
 import com.chin.minddump.storage.EntryEvent
@@ -12,12 +13,16 @@ import com.chin.minddump.storage.TodoState
 import java.io.File
 
 /**
- * Content + group-container rows. COMMENT rows live in [CommentEntity]; a comment
- * is reconstructed as a [MindDumpEntry] with `role == COMMENT` for the UI.
+ * Content + group-container rows. A file is a note; a directory is a group
+ * (type == GROUP). Comments are removed.
  *
- * Identity is [tid] (rebuild-stable epoch-millis + same-second offset). Membership
- * and nesting are expressed by [parentId], which references another row's tid (the
- * owning group for a member, the parent group for a nested group; null at root).
+ * Identity is [filePath]: the file's absolute path. The OS guarantees
+ * uniqueness within a directory, so this is a globally unique, rebuild-stable
+ * primary key — no synthesized `tid`. A `workDir` move always triggers a full
+ * rebuild, so absolute paths re-root at rebuild time without staleness.
+ * Membership in a group is positional, captured by [groupPath] (the owning
+ * group directory's absolute path, null at the month-bucket root). Groups are a
+ * single level, so [groupPath] never references another group's interior.
  */
 @Entity(
     tableName = "entries",
@@ -25,19 +30,18 @@ import java.io.File
         Index(value = ["filePath"], unique = true),
         Index(value = ["space", "monthFolder"]),
         Index(value = ["space", "type"]),
-        Index(value = ["parentId"]),
+        Index(value = ["groupPath"]),
     ],
 )
 data class EntryEntity(
     @PrimaryKey
-    val tid: Long,
     val filePath: String,
     val type: EntryType,
     val space: Space,
     val monthFolder: String,
     val lastModified: Long,
     val isEncrypted: Boolean = false,
-    val parentId: Long? = null,
+    val groupPath: String? = null,
     val isPinned: Boolean = false,
     val todoState: TodoState = TodoState.NONE,
     val metaEncrypted: Boolean = false,
@@ -50,9 +54,8 @@ fun EntryEntity.toEntry(tags: List<String> = emptyList(), events: List<EntryEven
         type = type,
         space = space,
         monthFolder = monthFolder,
-        tid = tid,
         role = if (type == EntryType.GROUP) EntryRole.GROUP else EntryRole.FILE,
-        parentId = parentId,
+        groupPath = groupPath,
         isPinned = isPinned,
         todoState = todoState,
         tags = tags,
@@ -65,14 +68,13 @@ fun MindDumpEntry.toEntity(
     isEncrypted: Boolean = false,
 ): EntryEntity =
     EntryEntity(
-        tid = tid,
         filePath = file.absolutePath,
         type = type,
         space = space,
         monthFolder = monthFolder,
         lastModified = file.lastModified(),
         isEncrypted = isEncrypted,
-        parentId = parentId,
+        groupPath = groupPath,
         isPinned = isPinned,
         todoState = todoState,
         metaEncrypted = metaEncrypted,
@@ -80,96 +82,57 @@ fun MindDumpEntry.toEntity(
     )
 
 /**
- * Comment rows, decoupled from the content/group table. A comment links to its owner
- * by [targetTid] (the owner's tid). It is reconstructed as a [MindDumpEntry] with
- * `role == COMMENT` for the UI, so the existing comment presentation is unchanged.
- *
- * `tid` derives from the comment's own capture timestamp + collision offset (the
- * `nowTs` in `{targetTs}-n-{nowTs}.md`); `targetTid` derives from the owner's
- * `targetTs`. A dangling [targetTid] (owner deleted) renders as an orphan comment.
- */
-@Entity(
-    tableName = "comments",
-    indices = [
-        Index(value = ["filePath"], unique = true),
-        Index(value = ["targetTid"]),
-    ],
-)
-data class CommentEntity(
-    @PrimaryKey
-    val tid: Long,
-    val targetTid: Long,
-    val filePath: String,
-    val space: Space,
-    val contentPreview: String = "",
-    val lastModified: Long,
-    val isEncrypted: Boolean = false,
-)
-
-fun CommentEntity.toEntry(): MindDumpEntry =
-    MindDumpEntry(
-        file = File(filePath),
-        type = EntryType.TEXT,
-        space = space,
-        monthFolder = "", // comments do not carry a month folder; display uses timestamp
-        tid = tid,
-        role = EntryRole.COMMENT,
-        targetTid = targetTid,
-    )
-
-/**
- * Flat tag relation: one row per (owner, tag). Composite primary key gives natural
- * deduplication. Replaces the former separator-joined `tags` column (and fixes the
- * empty-`META_TAGS_SEPARATOR` bug). The sidecar on disk remains the authority; this
- * table is a rebuildable index.
+ * Flat tag relation: one row per (owner, tag). Composite primary key gives
+ * natural deduplication. The `.meta` sidecar on disk is the authority; this
+ * table is a rebuildable index keyed by the owner's file path.
  */
 @Entity(
     tableName = "tags",
-    primaryKeys = ["tid", "tag"],
+    primaryKeys = ["filePath", "tag"],
     foreignKeys = [
-        androidx.room3.ForeignKey(
+        ForeignKey(
             entity = EntryEntity::class,
-            parentColumns = ["tid"],
-            childColumns = ["tid"],
-            onDelete = androidx.room3.ForeignKey.CASCADE,
+            parentColumns = ["filePath"],
+            childColumns = ["filePath"],
+            onDelete = ForeignKey.CASCADE,
         ),
     ],
     indices = [Index(value = ["tag"])],
 )
 data class TagEntity(
-    val tid: Long,
+    val filePath: String,
     val tag: String,
 )
 
 /**
- * Scheduled-event relation: one row per event. Addressed by the autogen [id] (the
- * scheduler cancels/re-arms by id). The sidecar remains the authority; this table
- * is a rebuildable index. Replaces the former YAML-joined `events` column.
+ * Scheduled-event relation: one row per event. Addressed by the autogen [id]
+ * (the scheduler cancels/re-arms by id). The sidecar remains the authority;
+ * this table is a rebuildable index keyed by the owner's file path.
  */
 @Entity(
     tableName = "events",
     foreignKeys = [
-        androidx.room3.ForeignKey(
+        ForeignKey(
             entity = EntryEntity::class,
-            parentColumns = ["tid"],
-            childColumns = ["tid"],
-            onDelete = androidx.room3.ForeignKey.CASCADE,
+            parentColumns = ["filePath"],
+            childColumns = ["filePath"],
+            onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index(value = ["tid"]), Index(value = ["due"])],
+    indices = [Index(value = ["filePath"]), Index(value = ["due"])],
 )
 data class EventEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    val tid: Long,
+    val filePath: String,
     val due: String, // ISO local date-time, e.g. 2026-06-20T09:00
     val state: String, // EventState name
     val trigger: String, // EventTrigger name
 )
 
 /** Encode/decode between [EntryEvent]s and [EventEntity] rows (the sidecar is authority). */
-fun EntryEvent.toEventEntity(tid: Long): EventEntity =
-    EventEntity(tid = tid, due = due.toString(), state = state.name, trigger = trigger.name)
+fun EntryEvent.toEventEntity(filePath: String): EventEntity =
+    EventEntity(filePath = filePath, due = due.toString(), state = state.name, trigger = trigger.name)
 
 fun EventEntity.toEntryEvent(): EntryEvent =
     EntryEvent(

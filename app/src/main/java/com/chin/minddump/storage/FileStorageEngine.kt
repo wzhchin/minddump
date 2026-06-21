@@ -14,9 +14,13 @@ import timber.log.Timber
 /**
  * Handles all file operations for MindDump.
  * Directory layout: {workDir}/{Public,Private}/YYYY-MM/
- * File naming: {yymm-dd-HHMMSS}-f[-{originalName}].{extension}
- * Comment naming: {targetTs}-n-{yymm-dd-HHMMSS}.md
- * Group directories: {yymm-dd-HHMMSS}-g[-{name}]/
+ * File naming: [9999-]{yymm-dd-HHMMSS}-[STATUS-]-f[-{originalName}].{extension}[.enc]
+ * Group directories: [9999-]{yymm-dd-HHMMSS}-[STATUS-]-f[-{name}]/   (a directory, single level)
+ * Meta sidecars: {ownerFileName}.meta[.enc]   (paired by the owner's full filename)
+ *
+ * Identity is the file path. Group membership is positional (a note sits in a
+ * group because it lives in that group's directory). Groups are single-level —
+ * a group directory contains only member files, never sub-groups.
  */
 @Suppress("TooManyFunctions") // File ops are inherently granular; grouped by concern
 class FileStorageEngine(
@@ -183,14 +187,17 @@ class FileStorageEngine(
     }
 
     /**
-     * Create a group directory. With [parentDir] == null it is created under the
-     * current month (legacy behavior); with a non-null [parentDir] it is created
-     * inside that group directory, enabling nesting.
-     * Produces: {yymm-dd-HHMMSS}-g[-{name}]/
+     * Create a group directory at the month-top level. Groups are single-level,
+     * so [parentDir] is intentionally ignored if non-null — a group is always
+     * created directly under the current month directory. Callers must not pass
+     * a group directory as [parentDir]; nesting is not supported.
+     * Produces: {yymm-dd-HHMMSS}-f[-{name}]/
      */
     fun createGroup(space: Space, name: String?, parentDir: File? = null): File {
-        val dir = parentDir ?: ensureCurrentMonthDir(space)
-        val suffix = if (name.isNullOrBlank()) "g" else "g-$name"
+        @Suppress("UNUSED_PARAMETER")
+        val ignoredNesting = parentDir // Groups are single-level; nesting is refused.
+        val dir = ensureCurrentMonthDir(space)
+        val suffix = if (name.isNullOrBlank()) "f" else "f-$name"
         var groupDir = File(dir, "${nowTimestampStr()}-$suffix")
         var seq = 1
         while (groupDir.exists()) {
@@ -202,54 +209,64 @@ class FileStorageEngine(
     }
 
     /**
-     * Move a file into a group directory.
+     * Move a file into a group directory, carrying its `.meta` sidecar along.
      * Returns the new file path after the move.
      */
-    fun moveToGroup(file: File, groupDir: File): File {
-        val dest = File(groupDir, file.name)
-        val moved = file.renameTo(dest)
-        check(moved) { "Failed to move ${file.absolutePath} into group ${groupDir.absolutePath}" }
-        return dest
-    }
+    fun moveToGroup(file: File, groupDir: File): File = moveEntryToDir(file, groupDir)
 
     /**
-     * Move a file out of its group directory. If the group is nested (its parent
-     * is itself a group), the file moves into that parent group; otherwise it
-     * moves to the month directory.
+     * Move a file out of its group directory to the month-top level, carrying
+     * its `.meta` sidecar. Groups are single-level, so the destination is always
+     * the month directory.
      */
     @Suppress("UNUSED_PARAMETER")
     fun moveOutOfGroup(file: File, space: Space): File {
         val groupDir = file.parentFile
             ?: error("File is not inside a group directory: ${file.absolutePath}")
-        val destParent = dissolveDestination(groupDir)
+        val destParent = groupDir.parentFile
+            ?: error("Group directory has no parent: ${groupDir.absolutePath}")
+        return moveEntryToDir(file, destParent)
+    }
+
+    /**
+     * Move an owner file (and its `.meta` sidecar, if any) into [destParent].
+     * Both travel together so the pairing survives the move; the sidecar is
+     * optional (a bare note has none).
+     */
+    private fun moveEntryToDir(file: File, destParent: File): File {
         val dest = File(destParent, file.name)
         val moved = file.renameTo(dest)
-        check(moved) { "Failed to move ${file.absolutePath} out of group" }
+        check(moved) { "Failed to move ${file.absolutePath} into ${destParent.absolutePath}" }
+        val oldMeta = metaFile(file)
+        if (oldMeta.exists()) {
+            val newMeta = metaFile(dest)
+            check(oldMeta.renameTo(newMeta)) {
+                "Failed to move sidecar ${oldMeta.absolutePath} alongside ${dest.absolutePath}"
+            }
+        }
         return dest
     }
 
     /**
-     * Where members of [groupDir] should go when it is dissolved: its parent
-     * directory (the parent group if nested, else the month directory).
-     */
-    private fun dissolveDestination(groupDir: File): File =
-        groupDir.parentFile ?: error("Group directory has no parent: ${groupDir.absolutePath}")
-
-    /**
-     * Dissolve a group: move every member (loose files and sub-group directories)
-     * into the group's parent location, then remove the now-empty group directory.
-     * Nesting-aware — members of a sub-group move into the parent group, not the
-     * month directory.
+     * Dissolve a group: move every member file (carrying each one's `.meta`
+     * sidecar) to the month-top level, then remove the now-empty group directory.
+     * Groups are single-level, so members always go to the month directory —
+     * there is no parent-group case.
      *
      * On a per-item failure, the exception propagates and any items already moved
      * remain at their destination (reconcile will re-index them).
      */
     fun dissolveGroup(groupDir: File) {
-        val destParent = dissolveDestination(groupDir)
+        val destParent = groupDir.parentFile
+            ?: error("Group directory has no parent: ${groupDir.absolutePath}")
         groupDir.listFiles()?.forEach { child ->
-            val dest = File(destParent, child.name)
-            val moved = child.renameTo(dest)
-            check(moved) { "Failed to move ${child.absolutePath} out of group ${groupDir.absolutePath}" }
+            if (child.isDirectory) return@forEach // single-level: no sub-groups expected
+            moveEntryToDir(child, destParent)
+        }
+        // A leftover sidecar whose owner moved is now an orphan; reconcile clears it,
+        // but we also sweep obvious orphans here so the dir can be removed.
+        groupDir.listFiles()?.forEach { orphan ->
+            if (orphan.isFile && isMetaName(orphan.name)) orphan.delete()
         }
         val deleted = groupDir.delete()
         check(deleted) { "Failed to delete group directory ${groupDir.absolutePath}" }
@@ -269,18 +286,17 @@ class FileStorageEngine(
     }
 
     /**
-     * Rename a group directory's display name portion.
-     * Reuses the `[9999-]{ts}-[STATUS-]-g[-{name}]` naming rule from [createGroup],
-     * preserving any existing pin prefix and todo status.
+     * Rename a group directory's display name portion. Reuses the
+     * `[9999-]{ts}-[STATUS-]-f[-{name}]` naming rule from [createGroup],
+     * preserving any existing pin prefix and todo status, and carries the
+     * group's `.meta` sidecar (a sibling in the parent) via [renameEntry].
      * Returns the renamed directory.
      */
     fun renameGroupDir(groupDir: File, newName: String?): File {
         val meta = FileMetadata.fromFile(groupDir) ?: error("Cannot parse group directory: ${groupDir.name}")
-        val newDir = File(groupDir.parent, reassembleDirName(meta.timestamp, meta.isPinned, meta.todoState, newName))
-        check(!newDir.exists()) { "Target group directory already exists: ${newDir.absolutePath}" }
-        val renamed = groupDir.renameTo(newDir)
-        check(renamed) { "Failed to rename group directory ${groupDir.absolutePath}" }
-        return newDir
+        val target = reassembleDirName(meta.timestamp, meta.isPinned, meta.todoState, newName)
+        if (target == groupDir.name) return groupDir
+        return renameEntry(groupDir, target)
     }
 
     /**
@@ -289,7 +305,6 @@ class FileStorageEngine(
      */
     fun setEntryPinned(file: File, pinned: Boolean): File {
         val meta = FileMetadata.fromFile(file) ?: error("Cannot parse file: ${file.name}")
-        if (meta.role == EntryRole.COMMENT) error("Comments cannot be pinned: ${file.name}")
         if (meta.isPinned == pinned) return file
         return renameEntryFile(file, meta.copy(isPinned = pinned))
     }
@@ -300,35 +315,30 @@ class FileStorageEngine(
      */
     fun setEntryStatus(file: File, state: TodoState): File {
         val meta = FileMetadata.fromFile(file) ?: error("Cannot parse file: ${file.name}")
-        if (meta.role == EntryRole.COMMENT) error("Comments cannot carry a status: ${file.name}")
         if (meta.todoState == state) return file
         return renameEntryFile(file, meta.copy(todoState = state))
     }
 
     /**
-     * Toggle the `9999-` pin prefix on a group directory.
+     * Toggle the `9999-` pin prefix on a group directory. Carries the `.meta`
+     * sidecar alongside via [renameEntry].
      */
     fun setGroupPinned(groupDir: File, pinned: Boolean): File {
         val meta = FileMetadata.fromFile(groupDir) ?: error("Cannot parse group directory: ${groupDir.name}")
         if (meta.isPinned == pinned) return groupDir
-        val newDir = File(groupDir.parent, reassembleDirName(meta.timestamp, pinned, meta.todoState, meta.originalName))
-        check(!newDir.exists()) { "Target group directory already exists: ${newDir.absolutePath}" }
-        val renamed = groupDir.renameTo(newDir)
-        check(renamed) { "Failed to pin group directory ${groupDir.absolutePath}" }
-        return newDir
+        val target = reassembleDirName(meta.timestamp, pinned, meta.todoState, meta.originalName)
+        return renameEntry(groupDir, target)
     }
 
     /**
      * Set the todo status on a group directory. Pass [TodoState.NONE] to clear.
+     * Carries the `.meta` sidecar alongside via [renameEntry].
      */
     fun setGroupStatus(groupDir: File, state: TodoState): File {
         val meta = FileMetadata.fromFile(groupDir) ?: error("Cannot parse group directory: ${groupDir.name}")
         if (meta.todoState == state) return groupDir
-        val newDir = File(groupDir.parent, reassembleDirName(meta.timestamp, meta.isPinned, state, meta.originalName))
-        check(!newDir.exists()) { "Target group directory already exists: ${newDir.absolutePath}" }
-        val renamed = groupDir.renameTo(newDir)
-        check(renamed) { "Failed to set status on group directory ${groupDir.absolutePath}" }
-        return newDir
+        val target = reassembleDirName(meta.timestamp, meta.isPinned, state, meta.originalName)
+        return renameEntry(groupDir, target)
     }
 
     /**
@@ -344,7 +354,8 @@ class FileStorageEngine(
     }
 
     /**
-     * Reassemble a group directory's name (no extension).
+     * Reassemble a group directory's name (no extension). Uses the `f` role token,
+     * same as a file note — the directory itself is what marks a group.
      */
     private fun reassembleDirName(
         timestamp: String,
@@ -354,13 +365,14 @@ class FileStorageEngine(
     ): String {
         val pin = if (isPinned) "9999-" else ""
         val status = state.code?.let { "$it-" } ?: ""
-        val suffix = if (name.isNullOrBlank()) "g" else "g-$name"
+        val suffix = if (name.isNullOrBlank()) "f" else "f-$name"
         return "$pin$timestamp-$status$suffix"
     }
 
     /**
      * Rename a file entry to match [newMeta], guarding against collisions by
      * appending `_1`, `_2`, … to the original-name portion before the extension.
+     * The owner's `.meta` sidecar (if any) is renamed alongside via [renameEntry].
      */
     private fun renameEntryFile(file: File, newMeta: FileMetadata): File {
         val parent = file.parentFile ?: error("File has no parent: ${file.absolutePath}")
@@ -376,32 +388,33 @@ class FileStorageEngine(
             target = targetFor(suffixed)
             seq++
         }
-        val renamed = file.renameTo(target)
-        check(renamed) { "Failed to rename ${file.absolutePath} -> ${target.absolutePath}" }
-        return target
-    }
-
-    /**
-     * Save a comment file targeting a specific entry.
-     * Produces: {targetTs}-n-{yymm-dd-HHMMSS}.md
-     * The comment is placed in the same directory as the target.
-     */
-    fun saveComment(targetDir: File, targetTimestamp: String, content: String): File {
-        val file = uniqueFile(targetDir, "$targetTimestamp-n-${nowTimestampStr()}", "md")
-        file.writeText(content)
-        return file
+        return renameEntry(file, target.name)
     }
 
     /**
      * Resolve the sidecar path for an owner entry. The sidecar is a sibling of
-     * the owner (in the owner's parent directory) named `{ts}-m.yaml[.enc]`.
-     * [encrypted] selects the `.yaml.enc` (Private) vs `.yaml` (Public) form.
+     * the owner (in the owner's parent directory) named `{ownerFileName}.meta`
+     * (`.meta.enc` in Private). Pairing is a pure function of the owner's full
+     * name — stateless, cold-rebuildable, and conflict-free (the owner filename
+     * is unique within its directory).
      */
     fun sidecarFileFor(owner: File, encrypted: Boolean): File {
-        val ts = FileMetadata.fromFile(owner)?.timestamp
-            ?: error("Cannot derive timestamp for owner: ${owner.name}")
-        val name = if (encrypted) "$ts-m.yaml.enc" else "$ts-m.yaml"
-        return File(owner.parentFile, name)
+        val suffix = if (encrypted) ".meta.enc" else ".meta"
+        return File(owner.parentFile, owner.name + suffix)
+    }
+
+    /** Whether a filename looks like a `.meta` / `.meta.enc` sidecar. */
+    private fun isMetaName(name: String): Boolean =
+        name.endsWith(".meta") || name.endsWith(".meta.enc")
+
+    /**
+     * The `.meta` sidecar paired to [owner] (either `.meta` or `.meta.enc`,
+     * whichever exists on disk; null when neither does).
+     */
+    private fun metaFile(owner: File): File {
+        val plain = sidecarFileFor(owner, encrypted = false)
+        if (plain.exists()) return plain
+        return sidecarFileFor(owner, encrypted = true)
     }
 
     /**
@@ -423,8 +436,9 @@ class FileStorageEngine(
     fun scanGroups(space: Space): List<File> = scanChildGroups(getCurrentMonthDir(space))
 
     /**
-     * List the direct group sub-directories under [parentDir] (a month dir or a
-     * group dir). Powers both month-top group cards and nested sub-group cards.
+     * List the direct group sub-directories under [parentDir] (a month dir). With
+     * single-level groups there are no sub-group cards inside a group directory,
+     * so callers only invoke this against a month directory.
      */
     fun scanChildGroups(parentDir: File): List<File> {
         if (!parentDir.exists()) return emptyList()
@@ -436,152 +450,114 @@ class FileStorageEngine(
     }
 
     /**
-     * Scan all entries for a given space, sorted by lastModified (newest first).
-     * Uses FileMetadata for parsing — skips non-MindDump files. Recursively scans
-     * group directories and resolves [MindDumpEntry.parentId] (the owning/nesting
-     * group's tid) directly from ancestor directory names, since tid is derived
-     * purely from a filename.
+     * Scan all entries for a given space, sorted by filename (newest first).
+     * Uses FileMetadata for parsing - skips non-MindDump files. A note is a file;
+     * a group is a directory. Groups are single-level: the scanner enters a group
+     * directory once, collects only its member files, and does NOT recurse for
+     * nested sub-groups.
      *
-     * Indexed kinds: FILE/COMMENT content rows plus GROUP directory containers.
-     * META sidecars (`m.yaml` / `m.yaml.enc`) are NOT entries — they are paired
-     * own entries). META sidecars (`m.yaml` / `m.yaml.enc`) are NOT entries —
-     * they are paired to their owner by timestamp alignment and folded into the
-     * owner's [MindDumpEntry.tags] / [MindDumpEntry.events]. Private encrypted
-     * sidecars are left unread here (lazy decryption happens on unlock), so the
-     * owner is marked [MindDumpEntry.metaEncrypted] = true with empty meta.
+     * Metadata sidecars (`.meta` / `.meta.enc`) are paired to their owner by the
+     * owner's full filename (`name + ".meta"`), which is unique within a directory,
+     * so a same-second note and a same-second group never share a sidecar. Private
+     * encrypted sidecars are left unread here (lazy decryption happens on unlock),
+     * so the owner is marked metaEncrypted = true with empty meta. Legacy
+     * `{ts}-m.yaml` sidecars and `{targetTs}-n-...` comment files do not match the
+     * `f`/`m` patterns and are skipped (not indexed).
+     *
+     * There is no synthesized tid - identity is the file path. groupPath records
+     * which group a note lives in (the owning group directory's absolute path),
+     * null at the month-top level. The absolute form matches [moveToGroup],
+     * [indexGroupDir], the UI's `currentDir.absolutePath` scope filter, and the
+     * `getMembersSnapshot` DAO call — it is the canonical form across the app.
+     * A `workDir` move always triggers a full rebuild, so absolute paths are
+     * re-rooted at rebuild time without staleness.
      */
-    @Suppress("CyclomaticComplexMethod", "LongMethod")
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth")
     fun scanEntries(space: Space): List<MindDumpEntry> {
         val spaceDir = File(getRootDir(), space.folderName)
         if (!spaceDir.exists()) return emptyList()
 
         val entries = mutableListOf<MindDumpEntry>()
+        var currentMonth: String = ""
 
-        fun scanDirectory(dir: File, monthFolder: String, parentTid: Long?) {
-            val children = dir.listFiles() ?: return
+        fun emitOwner(owner: File, type: EntryType, role: EntryRole, groupPath: String?) {
+            val sidecar = sidecarFor(owner)
+            val meta = FileMetadata.fromFile(owner)
+            entries.add(
+                MindDumpEntry(
+                    file = owner,
+                    type = type,
+                    space = space,
+                    monthFolder = currentMonth,
+                    role = role,
+                    groupPath = groupPath,
+                    isPinned = meta?.isPinned ?: false,
+                    todoState = meta?.todoState ?: TodoState.NONE,
+                    tags = sidecar?.parsed?.tags ?: emptyList(),
+                    events = sidecar?.parsed?.events ?: emptyList(),
+                    metaEncrypted = sidecar?.encrypted ?: false,
+                ),
+            )
+        }
 
-            // Map timestamp -> parsed sidecar content present in THIS directory.
-            // A sidecar pairs with the owner (file or group subdir) whose
-            // timestamp matches; group sidecars live as siblings in the parent.
-            val sidecarsByTimestamp = mutableMapOf<String, SidecarPayload>()
-            children.forEach { child ->
-                if (!child.isFile) return@forEach
-                val meta = FileMetadata.fromFile(child) ?: return@forEach
-                if (meta.role != EntryRole.META) return@forEach
-                sidecarsByTimestamp[meta.timestamp] = readSidecar(child, meta.isEncrypted)
+        fun indexLooseFile(file: File) {
+            val meta = FileMetadata.fromFile(file) ?: return
+            // META sidecars are consumed via sidecarFor; only FILE rows are owners.
+            if (meta.role == EntryRole.FILE) emitOwner(file, meta.entryType, EntryRole.FILE, groupPath = null)
+        }
+
+        fun indexMember(member: File, groupDir: File) {
+            if (!member.isFile) return
+            val memberMeta = FileMetadata.fromFile(member) ?: return
+            if (memberMeta.role != EntryRole.FILE) return
+            emitOwner(member, memberMeta.entryType, EntryRole.FILE, groupPath = groupDir.absolutePath)
+        }
+
+        // Index a group directory and its direct member files (single level — no
+        // recursion into sub-groups). Member notes are sidecar owners via [emitOwner].
+        fun indexGroup(groupDir: File) {
+            emitOwner(groupDir, EntryType.GROUP, EntryRole.GROUP, groupPath = null)
+            groupDir.listFiles()?.forEach { member -> indexMember(member, groupDir) }
+        }
+
+        fun indexChild(child: File) {
+            if (child.isDirectory) {
+                if (FileMetadata.fromFile(child)?.role == EntryRole.GROUP) indexGroup(child)
+            } else if (child.isFile) {
+                indexLooseFile(child)
             }
+        }
 
-            // Group subdirectories of this dir, keyed by timestamp (their sidecars
-            // live here too). Indexed as GROUP entries and recursed into.
-            val groupSubDirsByTimestamp = mutableMapOf<String, File>()
-            children.forEach { child ->
-                if (!child.isDirectory) return@forEach
-                val subMeta = FileMetadata.fromFile(child)
-                if (subMeta?.role == EntryRole.GROUP) {
-                    groupSubDirsByTimestamp[subMeta.timestamp] = child
-                }
-            }
-
-            // Sidecar owners (FILE only). Comments share their target's timestamp
-            // (they are named {targetTs}-n-{nowTs}.md) but are NOT sidecar owners —
-            // they are consumers of the file's metadata, not contenders for it.
-            // Counting them here would inflate the owner count and make the sidecar
-            // look ambiguous, dropping the owner's tags/events the moment it gains a
-            // comment. So only FILE rows are sidecar owners.
-            val fileOwnersByTimestamp = mutableMapOf<String, Int>() // ts -> count
-            children.forEach { file ->
-                if (!file.isFile) return@forEach
-                val meta = FileMetadata.fromFile(file) ?: return@forEach
-                if (meta.role == EntryRole.FILE) {
-                    fileOwnersByTimestamp.merge(meta.timestamp, 1) { a, b -> a + b }
-                }
-            }
-
-            // Emit FILE/COMMENT owners with their paired sidecar. A comment's own
-            // tid derives from its `-n-{nowTs}` segment (NOT the leading targetTs).
-            children.forEach { file ->
-                if (!file.isFile) return@forEach
-                val meta = FileMetadata.fromFile(file) ?: return@forEach
-                if (meta.role != EntryRole.FILE && meta.role != EntryRole.COMMENT) return@forEach
-
-                val sidecar = sidecarIfUnambiguous(
-                    timestamp = meta.timestamp,
-                    sidecarsByTimestamp = sidecarsByTimestamp,
-                    fileOwnersByTimestamp = fileOwnersByTimestamp,
-                    groupSubDirsByTimestamp = groupSubDirsByTimestamp,
-                )
-                val commentTs = if (meta.role == EntryRole.COMMENT) {
-                    Tid.parseCommentStem(file.nameWithoutExtension)
-                } else {
-                    null
-                }
-                entries.add(
-                    MindDumpEntry(
-                        file = file,
-                        type = meta.entryType,
-                        space = space,
-                        monthFolder = if (commentTs != null) "" else monthFolder,
-                        tid = commentTs?.ownTid ?: Tid.tidOfStem(file.nameWithoutExtension),
-                        role = meta.role,
-                        parentId = parentTid,
-                        // Comments carry their owner's targetTs so the repository can
-                        // resolve targetTid (the owner's collision offset isn't in the
-                        // comment filename, so targetTid is matched against scanned owners).
-                        targetTid = commentTs?.let { 0L },
-                        commentTargetTs = commentTs?.targetTs,
-                        isPinned = meta.isPinned,
-                        todoState = meta.todoState,
-                        tags = sidecar?.parsed?.tags ?: emptyList(),
-                        events = sidecar?.parsed?.events ?: emptyList(),
-                        metaEncrypted = sidecar?.encrypted ?: false,
-                    ),
-                )
-            }
-
-            // Emit GROUP owners (the directories themselves) with their paired
-            // sidecar, then recurse into them. The group's own tid comes from its
-            // directory name and becomes the parentTid for its descendants.
-            groupSubDirsByTimestamp.forEach { (ts, subDir) ->
-                val groupTid = Tid.tidOfStem(subDir.name)
-                val sidecar = sidecarIfUnambiguous(
-                    timestamp = ts,
-                    sidecarsByTimestamp = sidecarsByTimestamp,
-                    fileOwnersByTimestamp = fileOwnersByTimestamp,
-                    groupSubDirsByTimestamp = groupSubDirsByTimestamp,
-                )
-                val dirMeta = FileMetadata.fromFile(subDir)
-                entries.add(
-                    MindDumpEntry(
-                        file = subDir,
-                        type = EntryType.GROUP,
-                        space = space,
-                        monthFolder = monthFolder,
-                        tid = groupTid,
-                        role = EntryRole.GROUP,
-                        parentId = parentTid,
-                        isPinned = dirMeta?.isPinned ?: false,
-                        todoState = dirMeta?.todoState ?: TodoState.NONE,
-                        tags = sidecar?.parsed?.tags ?: emptyList(),
-                        events = sidecar?.parsed?.events ?: emptyList(),
-                        metaEncrypted = sidecar?.encrypted ?: false,
-                    ),
-                )
-                scanDirectory(subDir, monthFolder, groupTid)
-            }
+        // Scan a month directory. Group directories are indexed as GROUP owners and
+        // entered once for their members; loose files are indexed directly.
+        fun scanMonth(monthDir: File, monthFolder: String) {
+            currentMonth = monthFolder
+            monthDir.listFiles()?.forEach { child -> indexChild(child) }
         }
 
         spaceDir
             .listFiles()
             ?.filter { it.isDirectory && it.name != TRASH_DIR_NAME }
-            ?.forEach { monthDir ->
-                val monthFolder = monthDir.name // YYYY-MM
-                scanDirectory(monthDir, monthFolder, null)
-            }
+            ?.forEach { monthDir -> scanMonth(monthDir, monthDir.name) }
 
         // Sort by filename (descending) so the `9999-` pin sentinel floats pinned
         // entries above all real dates, and within each block the timestamp gives
         // newest-first order. Stable across edits — pinning, not editing, reorders.
         return entries.sortedByDescending { it.file.name }
+    }
+
+    /**
+     * The `.meta` sidecar for [owner], parsed when readable (Public) or flagged
+     * encrypted (Private, lazy). Returns null when no sidecar exists on disk
+     * (a bare note). A sidecar is identified by exact full-name pairing — no
+     * ambiguity, no orphaning of real owners.
+     */
+    private fun sidecarFor(owner: File): SidecarPayload? {
+        val plain = sidecarFileFor(owner, encrypted = false)
+        if (plain.exists()) return readSidecar(plain, isEncrypted = false)
+        val enc = sidecarFileFor(owner, encrypted = true)
+        if (enc.exists()) return readSidecar(enc, isEncrypted = true)
+        return null
     }
 
     /**
@@ -594,8 +570,8 @@ class FileStorageEngine(
     )
 
     /**
-     * Read a sidecar file. Public sidecars (`.yaml`) are parsed immediately.
-     * Private encrypted sidecars (`.yaml.enc`) are NOT decrypted here — the
+     * Read a sidecar file. Public sidecars (`.meta`) are parsed immediately.
+     * Private encrypted sidecars (`.meta.enc`) are NOT decrypted here — the
      * owner is marked encrypted so tags/events stay empty until unlock.
      */
     private fun readSidecar(file: File, isEncrypted: Boolean): SidecarPayload =
@@ -610,56 +586,54 @@ class FileStorageEngine(
         }
 
     /**
-     * Return the sidecar for [timestamp] ONLY when the owner is unambiguous: a
-     * sidecar is orphaned if the timestamp has more than one file owner OR a
-     * group owner AND a file owner at the same timestamp, so we drop it rather
-     * than guess. [groupSubDirsByTimestamp] is the set of group owners seen in
-     * the same directory; we only pair a sidecar when exactly one owner total
-     * claims that timestamp.
+     * Rename an owner (file note or group directory) to [newName], carrying its
+     * `.meta` sidecar alongside so the owner/sidecar pairing survives every
+     * rename. This is the single funnel for owner renames: pin, todo status,
+     * slug edits, group renames, and group pin/status all route through it.
+     *
+     * OS `renameTo` moves one file at a time, so the owner and sidecar renames
+     * are not instantaneously atomic. A crash between them leaves a new owner
+     * whose sidecar is still under the old name; the next reconcile treats that
+     * stale sidecar as an orphan (no owner) and clears it, and the new owner
+     * reads as a bare note until its tags/events are re-added. Owner content is
+     * never lost — only the (rebuildable) sidecar is at risk in that window.
      */
-    private fun sidecarIfUnambiguous(
-        timestamp: String,
-        sidecarsByTimestamp: Map<String, SidecarPayload>,
-        fileOwnersByTimestamp: Map<String, Int>,
-        groupSubDirsByTimestamp: Map<String, File>,
-    ): SidecarPayload? {
-        val payload = sidecarsByTimestamp[timestamp] ?: return null
-        val fileOwnerCount = fileOwnersByTimestamp[timestamp] ?: 0
-        val hasGroupOwner = timestamp in groupSubDirsByTimestamp
-        val ownerCount = fileOwnerCount + (if (hasGroupOwner) 1 else 0)
-        if (ownerCount != 1) {
-            // Ambiguous or orphaned: refuse to pair.
-            return null
+    fun renameEntry(old: File, newName: String): File {
+        val parent = old.parentFile ?: error("Owner has no parent: ${old.absolutePath}")
+        val target = File(parent, newName)
+        check(!target.exists()) { "Target already exists: ${target.absolutePath}" }
+        check(old.renameTo(target)) { "Failed to rename ${old.absolutePath} -> ${target.absolutePath}" }
+        val oldMeta = metaFile(old)
+        if (oldMeta.exists()) {
+            val newMeta = metaFile(target)
+            check(oldMeta.renameTo(newMeta)) {
+                "Failed to rename sidecar ${oldMeta.absolutePath} -> ${newMeta.absolutePath}"
+            }
         }
-        return payload
+        return target
     }
 
     /**
      * Rename the originalName portion of a file, preserving pin, status, and
      * encryption. E.g., `9999-{ts}-TODO-f-oldname.pdf` → `9999-{ts}-TODO-f-newname.pdf`.
+     * Routes through [renameEntryFile] → [renameEntry] so the sidecar travels.
      */
-    fun renameEntry(file: File, newOriginalName: String?): File {
+    fun renameEntrySlug(file: File, newOriginalName: String?): File {
         val meta = FileMetadata.fromFile(file) ?: error("Cannot parse file: ${file.name}")
         val cleanedName = newOriginalName?.ifBlank { null }
         return renameEntryFile(file, meta.copy(originalName = cleanedName))
     }
 
     /**
-     * Move a file between spaces (Public ↔ Private).
+     * Move a file between spaces (Public ↔ Private), carrying its `.meta` sidecar.
      * Moves from current month dir to target space's month dir.
      */
     fun moveBetweenSpaces(file: File, targetSpace: Space): File {
-        val meta = FileMetadata.fromFile(file) ?: error("Cannot parse file: ${file.name}")
-
         // Determine current month from file path (find the YYYY-MM directory)
         val monthFolder = findMonthFolder(file) ?: currentMonthStr()
         val targetDir = getSpaceDir(targetSpace, monthFolder)
         if (!targetDir.exists()) targetDir.mkdirs()
-
-        val dest = File(targetDir, file.name)
-        val moved = file.renameTo(dest)
-        check(moved) { "Failed to move ${file.absolutePath} to ${targetSpace.name}" }
-        return dest
+        return moveEntryToDir(file, targetDir)
     }
 
     /**

@@ -454,18 +454,16 @@ class MindDumpViewModel
 
         /**
          * Build group summaries for a set of group directories, resolving members
-         * from the current entry set's [MindDumpEntry.parentId] (the group's tid).
+         * from the current entry set's [MindDumpEntry.groupPath] (the group dir path).
          */
         private fun buildSummaries(dirGroups: List<File>): List<GroupSummary> {
-            val membersByParent = _uiState.value.entries.groupBy { it.parentId }
+            val membersByGroup = _uiState.value.entries.groupBy { it.groupPath }
             return dirGroups.map { dir ->
-                val groupTid = com.chin.minddump.storage.Tid
-                    .tidOfStem(dir.name)
                 GroupSummary(
                     groupDir = dir,
                     name = FileMetadata.fromFile(dir)?.originalName
-                        ?: dir.name.substringAfter("-g", dir.name),
-                    memberEntries = membersByParent[groupTid] ?: emptyList(),
+                        ?: dir.name.substringAfter("-f", dir.name),
+                    memberEntries = membersByGroup[dir.absolutePath] ?: emptyList(),
                 )
             }
         }
@@ -890,19 +888,6 @@ class MindDumpViewModel
             }
         }
 
-        /**
-         * Create a comment targeting [targetEntry]. Blank content is ignored.
-         * The comment lands in the target's directory as `{targetTs}-n-{nowTs}.md`
-         * and refreshes the current scope so it appears in the parent card's folded list.
-         */
-        fun addComment(targetEntry: MindDumpEntry, content: String) {
-            if (content.isBlank()) return
-            viewModelScope.launch(Dispatchers.IO) {
-                repository.saveComment(_uiState.value.currentSpace, targetEntry, content)
-                refreshForCurrentScope()
-            }
-        }
-
         fun moveToGroup(entry: MindDumpEntry, groupDir: File) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.moveToGroup(entry, groupDir)
@@ -1319,35 +1304,19 @@ class MindDumpViewModel
         fun isSessionUnlocked(): Boolean = repository.isSessionUnlocked()
 
         /**
-         * Group entries with their comments. Comments (role=N) are nested under their
-         * target entry (matched by targetTid → owner tid). Orphan comments (no
-         * matching target) appear as standalone entries.
+         * Wrap each entry in a [GroupedEntry]. Comments are removed, so the
+         * `comments` slot is always empty — the wrapper is retained so the feed
+         * list type is stable. A future comment model would repopulate it.
+         *
+         * GROUP rows (directory containers) are excluded: they render as their
+         * own group cards via [uiState.groups], not as loose feed items. Without
+         * this filter a group would also appear as a `kind_file` loose item, and
+         * tapping it would try to open a directory (an "cannot open file" toast).
          */
-        private fun groupEntriesWithComments(entries: List<MindDumpEntry>): List<GroupedEntry> {
-            val files = entries.filter { it.role == EntryRole.FILE }
-            val comments = entries.filter { it.role == EntryRole.COMMENT }
-
-            val result = mutableListOf<GroupedEntry>()
-            val matchedComments = mutableSetOf<MindDumpEntry>()
-
-            // For each file, find its comments (matched by the owner's tid)
-            for (file in files) {
-                val fileComments = comments.filter {
-                    it.targetTid == file.tid && it !in matchedComments
-                }
-                matchedComments.addAll(fileComments)
-                result.add(GroupedEntry(entry = file, comments = fileComments))
-            }
-
-            // Orphan comments (no matching target file)
-            for (comment in comments) {
-                if (comment !in matchedComments) {
-                    result.add(GroupedEntry(entry = comment, comments = emptyList()))
-                }
-            }
-
-            return result
-        }
+        private fun groupEntriesWithComments(entries: List<MindDumpEntry>): List<GroupedEntry> =
+            entries
+                .filter { it.role != EntryRole.GROUP }
+                .map { GroupedEntry(entry = it, comments = emptyList()) }
 
         // --- Work directory ---
 

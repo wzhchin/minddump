@@ -67,7 +67,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.chin.minddump.audio.AudioRecorder
 import com.chin.minddump.data.MindDumpRepository
 import com.chin.minddump.R
-import com.chin.minddump.storage.EntryRole
 import com.chin.minddump.storage.EntryType
 import com.chin.minddump.storage.FileMetadata
 import com.chin.minddump.storage.MindDumpEntry
@@ -126,19 +125,17 @@ fun MainScreen(
     val groupName = currentDir?.let {
         FileMetadata.fromFile(it)?.originalName ?: it.name
     } ?: ""
-    // Direct members of the current scope: root → ungrouped entries (parentId null),
-    // group → entries whose parentId is this group's tid. Filter the ViewModel's
-    // already-grouped list (files + nested comments) by the same scope, so the list
-    // does not re-group at render time (single source of truth for comment nesting).
-    val scopeParentTid = currentDir?.let {
-        com.chin.minddump.storage.Tid
-            .tidOfStem(it.name)
-    }
+    // Direct members of the current scope: root → entries with groupPath == null,
+    // group → entries whose groupPath is this group directory's path. Filter the
+    // ViewModel's already-scoped list by the same scope, so the list does not
+    // re-filter at render time (single source of truth for grouping).
+    val scopeGroupPath = currentDir?.absolutePath
     val scopeGroupedEntries = uiState.groupedEntries.filter { grouped ->
-        grouped.entry.parentId == scopeParentTid
+        grouped.entry.groupPath == scopeGroupPath
     }
-    // Sub-group cards: month-top groups at root, child groups inside a group.
-    val scopeGroups = if (isGroupScope) uiState.childGroups else uiState.groups
+    // Group cards: month-top groups at root. Groups are single-level, so there
+    // are no sub-group cards inside an open group.
+    val scopeGroups = if (isGroupScope) emptyList() else uiState.groups
 
     @Suppress("UnusedPrivateProperty")
     var entryToDelete by remember { mutableStateOf<MindDumpEntry?>(null) }
@@ -579,9 +576,6 @@ fun MainScreen(
                     onSetStatus = { state ->
                         viewModel.setEntryStatus(entry, state)
                     },
-                    onAddComment = { content ->
-                        viewModel.addComment(entry, content)
-                    },
                     onShare = {
                         viewModel.shareEntries(listOf(entry))
                     },
@@ -882,16 +876,16 @@ fun openFile(context: Context, file: File) {
 }
 
 /**
- * Unified tap-to-open dispatch: text entries and comments open the in-app
- * fullscreen editor; everything else opens in the external viewer. Used by the
- * main list, group detail, and comment bubbles so the rule lives in one place.
+ * Unified tap-to-open dispatch: text entries open the in-app fullscreen editor;
+ * everything else opens in the external viewer. Used by the main list and group
+ * detail so the rule lives in one place.
  */
 fun onEntryOpen(
     context: Context,
     entry: MindDumpEntry,
     onTextEdit: (File) -> Unit,
 ) {
-    if (entry.type == EntryType.TEXT || entry.role == EntryRole.COMMENT) {
+    if (entry.type == EntryType.TEXT) {
         onTextEdit(entry.file)
     } else {
         openFile(context, entry.file)

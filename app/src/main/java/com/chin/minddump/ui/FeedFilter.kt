@@ -2,7 +2,6 @@ package com.chin.minddump.ui
 
 import com.chin.minddump.storage.MindDumpEntry
 import com.chin.minddump.storage.TodoState
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -95,9 +94,20 @@ enum class BucketKind {
 
 private fun LocalDate.today(): LocalDate = LocalDate.now()
 
-/** Day-granularity date of an entry, derived from its rebuild-stable [MindDumpEntry.tid]. */
+/**
+ * Day-granularity date of an entry, parsed from its filename timestamp
+ * (`yyMM-dd-HHmmss`, captured in the local zone). Filenames carry no zone, so
+ * local time at capture is assumed (matching [FileStorageEngine]'s naming).
+ */
 fun MindDumpEntry.date(zone: ZoneId = ZoneId.systemDefault()): LocalDate =
-    Instant.ofEpochMilli(tid).atZone(zone).toLocalDate()
+    runCatching {
+        val ldt = java.time.LocalDateTime.parse(
+            timestamp, // yyMM-dd-HHmmss
+            java.time.format.DateTimeFormatter
+                .ofPattern("yyMM-dd-HHmmss"),
+        )
+        ldt.atZone(zone).toLocalDate()
+    }.getOrDefault(LocalDate.now())
 
 /**
  * Compute the faceted tag list for the inline tag filter. [qualifying] is the set
