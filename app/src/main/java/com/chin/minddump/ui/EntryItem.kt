@@ -834,7 +834,7 @@ private fun PhotoEntryContent(
 }
 
 // ──────────────────────────────────────────────
-// Audio entry: waveform + play affordance — see AudioRecordingContent.kt.
+// Audio entry: play affordance + name/duration — see AudioRecordingContent.kt.
 // ──────────────────────────────────────────────
 
 // ──────────────────────────────────────────────
