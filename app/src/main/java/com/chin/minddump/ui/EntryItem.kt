@@ -280,10 +280,10 @@ fun GroupSummaryCard(
         },
         modifier = modifier.then(selectedOutline),
     ) {
-        // ── HEAD: dot · Collection · time  +  cluster (pin / status) ──
+        // ── HEAD: folder icon · time  +  cluster (pin / status) ──
         EntryCardHeader(
             typeColor = MaterialTheme.colorScheme.primary,
-            kindLabel = stringResource(R.string.kind_collection),
+            kindIcon = Icons.Filled.CreateNewFolder,
             timestamp = formatRelativeEpoch(summary.latestModified),
             isPinned = isPinned,
             todoState = todoState,
@@ -480,7 +480,7 @@ fun EntryItem(
         val isEncrypted = FileMetadata.fromFile(entry.file)?.isEncrypted == true
         EntryCardHeader(
             typeColor = typeColor,
-            kindLabel = entry.type.toKindLabel(),
+            kindIcon = entry.type.toIcon(),
             timestamp = formatRelativeTimestamp(entry.monthFolder, entry.timestamp),
             isPinned = entry.isPinned,
             todoState = entry.todoState,
@@ -569,13 +569,13 @@ private fun MultiSelectBadge(selected: Boolean, modifier: Modifier = Modifier) {
 /**
  * The single header layout used by every card type (m3e-restrained-cards).
  * A solid top row on the card surface: left dateline (multi-select check OR
- * type dot · KIND label · relative time), right cluster (pin · status · lock).
+ * type icon · relative time), right cluster (pin · status · lock).
  * No floating overlay, no scrim — media renders below this row.
  */
 @Composable
 private fun EntryCardHeader(
     typeColor: Color,
-    kindLabel: String,
+    kindIcon: ImageVector,
     timestamp: String,
     isPinned: Boolean,
     todoState: TodoState,
@@ -590,27 +590,20 @@ private fun EntryCardHeader(
             .padding(start = CARD_INSET, top = 14.dp, end = CARD_INSET, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Dateline first slot: in multi-select the check replaces the type dot.
+        // Dateline first slot: in multi-select the check replaces the type icon.
         if (isMultiSelectMode) {
             MultiSelectBadge(selected = isSelected)
         } else {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(typeColor),
+            Icon(
+                imageVector = kindIcon,
+                contentDescription = null,
+                tint = typeColor,
+                modifier = Modifier.size(18.dp),
             )
         }
         Spacer(modifier = Modifier.width(9.dp))
 
-        // KIND label (type-colored) + relative timestamp.
-        Text(
-            text = kindLabel,
-            style = MaterialTheme.typography.labelMedium,
-            color = typeColor,
-            modifier = Modifier.alphaBoost(),
-        )
-        DotSeparator()
+        // Relative timestamp.
         Text(
             text = timestamp,
             style = MaterialTheme.typography.labelMedium,
@@ -628,21 +621,6 @@ private fun EntryCardHeader(
         )
     }
 }
-
-/** Small dot separator between dateline segments. */
-@Composable
-private fun DotSeparator() {
-    Box(
-        modifier = Modifier
-            .padding(horizontal = 7.dp)
-            .size(3.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.outlineVariant),
-    )
-}
-
-/** Bumps the KIND label's visual presence slightly (weight via font weight, not size). */
-private fun Modifier.alphaBoost(): Modifier = this
 
 /** Right-aligned pin / status / lock cluster. */
 @Composable
@@ -1002,17 +980,6 @@ private fun EntryType.toIcon(): ImageVector = when (this) {
     EntryType.FILE -> Icons.AutoMirrored.Filled.InsertDriveFile
     EntryType.GROUP -> Icons.Filled.CreateNewFolder
     EntryType.UNKNOWN -> Icons.AutoMirrored.Filled.HelpOutline
-}
-
-@Composable
-private fun EntryType.toKindLabel(): String = when (this) {
-    EntryType.TEXT -> stringResource(R.string.kind_note)
-    EntryType.PHOTO -> stringResource(R.string.kind_photo)
-    EntryType.VIDEO -> stringResource(R.string.kind_video)
-    EntryType.RECORDING -> stringResource(R.string.kind_recording)
-    EntryType.FILE -> stringResource(R.string.kind_file)
-    EntryType.GROUP -> stringResource(R.string.kind_file)
-    EntryType.UNKNOWN -> stringResource(R.string.kind_file)
 }
 
 @Composable

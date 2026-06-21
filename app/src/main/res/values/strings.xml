@@ -147,12 +147,6 @@
     <string name="color_pink">粉</string>
 
     <!-- Group card -->
-    <string name="kind_note">笔记</string>
-    <string name="kind_photo">照片</string>
-    <string name="kind_video">视频</string>
-    <string name="kind_recording">录音</string>
-    <string name="kind_file">文件</string>
-    <string name="kind_collection">合集</string>
     <string name="group_unnamed">未命名分组</string>
     <string name="group_member_count">%1$d 项</string>
     <string name="group_empty">空分组</string>
